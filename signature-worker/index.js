@@ -99,7 +99,7 @@ async function markDocumentAsSigned(documentId) {
  */
 function getDeathCount(msg) {
   const xDeath = msg.properties.headers && msg.properties.headers['x-death'];
-  if (!Array.isArray(xDeath) || xDeath.length === 0) return 0;
+  if (!Array.isArray(xDeath) || xDeath.length === 0) { return 0; }
   return xDeath.reduce((sum, entry) => sum + (entry.count || 0), 0);
 }
 
