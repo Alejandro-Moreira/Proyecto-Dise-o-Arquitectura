@@ -1,0 +1,310 @@
+version: '3.9'
+
+# ──────────────────────────────────────────────────────────────────────────────
+# EcoFirma - Docker Compose (con stack de monitoreo completo)
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# Decisión de diseño de base de datos:
+#   Se usa UNA SOLA base de datos PostgreSQL (ecofirma_db) compartida entre
+#   users-service y documents-service, con tablas separadas por servicio.
+#   Ventajas para entorno local:
+#     - Un único contenedor PG que gestionar
+#     - Menor consumo de recursos
+#     - Inicialización más sencilla
+#   En producción se recomendaría una DB por servicio para aislamiento total.
+#
+# Levanta 11 contenedores:
+#   Aplicación (7):
+#     1. postgres           - Base de datos relacional
+#     2. redis              - Caché en memoria
+#     3. rabbitmq           - Message broker
+#     4. gateway            - API Gateway (puerto 8080)
+#     5. users-service      - Servicio de usuarios
+#     6. documents-service  - Servicio de documentos
+#     7. signature-worker   - Worker de firma asíncrona
+#
+#   Monitoreo (4):
+#     8.  prometheus        - Recolección de métricas (puerto 9090)
+#     9.  grafana           - Dashboards (puerto 3000)
+#     10. postgres-exporter - Exporta métricas de PostgreSQL
+#     11. redis-exporter    - Exporta métricas de Redis
+#
+# Uso:
+#   1. cp .env.example .env   (ajusta valores si lo deseas)
+#   2. docker-compose up --build
+# ──────────────────────────────────────────────────────────────────────────────
+
+networks:
+  ecofirma-network:
+    driver: bridge
+    name: ecofirma-network
+
+volumes:
+  postgres-data:
+    name: ecofirma-postgres-data
+  prometheus-data:
+    name: ecofirma-prometheus-data
+  grafana-data:
+    name: ecofirma-grafana-data
+
+services:
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # INFRAESTRUCTURA BASE
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  # ── 1. PostgreSQL 16 ─────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: ecofirma-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - ecofirma-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ── 2. Redis 7 ───────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: ecofirma-redis
+    restart: unless-stopped
+    networks:
+      - ecofirma-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── 3. RabbitMQ 3 (con métricas Prometheus nativas) ──────────────────────────
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: ecofirma-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      # Habilitar plugin de métricas Prometheus nativo de RabbitMQ
+      RABBITMQ_ENABLED_PLUGINS_FILE: /etc/rabbitmq/enabled_plugins
+    volumes:
+      - ./monitoring/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Panel de administración web
+      # Puerto 15692 para métricas Prometheus (accesible solo internamente)
+    networks:
+      - ecofirma-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # MICROSERVICIOS DE APLICACIÓN
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  # ── 4. API Gateway ────────────────────────────────────────────────────────────
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: ecofirma-gateway
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    environment:
+      GATEWAY_PORT: 8080
+      USERS_SERVICE_URL: ${USERS_SERVICE_URL}
+      DOCUMENTS_SERVICE_URL: ${DOCUMENTS_SERVICE_URL}
+    depends_on:
+      users-service:
+        condition: service_healthy
+      documents-service:
+        condition: service_healthy
+    networks:
+      - ecofirma-network
+
+  # ── 5. Users Service ──────────────────────────────────────────────────────────
+  users-service:
+    build:
+      context: ./users-service
+      dockerfile: Dockerfile
+    container_name: ecofirma-users-service
+    restart: unless-stopped
+    environment:
+      USERS_SERVICE_PORT: ${USERS_SERVICE_PORT:-3001}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ecofirma-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:${USERS_SERVICE_PORT:-3001}/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ── 6. Documents Service ──────────────────────────────────────────────────────
+  documents-service:
+    build:
+      context: ./documents-service
+      dockerfile: Dockerfile
+    container_name: ecofirma-documents-service
+    restart: unless-stopped
+    environment:
+      DOCUMENTS_SERVICE_PORT: ${DOCUMENTS_SERVICE_PORT:-3002}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_TTL: ${REDIS_TTL}
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ecofirma-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:${DOCUMENTS_SERVICE_PORT:-3002}/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ── 7. Signature Worker ───────────────────────────────────────────────────────
+  signature-worker:
+    build:
+      context: ./signature-worker
+      dockerfile: Dockerfile
+    container_name: ecofirma-signature-worker
+    restart: unless-stopped
+    environment:
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      DOCUMENTS_SERVICE_URL: ${DOCUMENTS_SERVICE_URL}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      documents-service:
+        condition: service_healthy
+    networks:
+      - ecofirma-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3003/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # STACK DE MONITOREO
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  # ── 8. Prometheus ─────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: ecofirma-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"   # UI de Prometheus (explorador de métricas y alertas)
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'   # Retención de 15 días
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'              # Permite reload vía API
+    depends_on:
+      - gateway
+      - users-service
+      - documents-service
+      - signature-worker
+    networks:
+      - ecofirma-network
+
+  # ── 9. Grafana ────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.3
+    container_name: ecofirma-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"   # Dashboard web de Grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ecofirma_grafana_admin
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_SERVER_ROOT_URL: http://localhost:3000
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/ecofirma-dashboard.json
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - ecofirma-network
+
+  # ── 10. PostgreSQL Exporter ───────────────────────────────────────────────────
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: ecofirma-postgres-exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ecofirma-network
+
+  # ── 11. Redis Exporter ────────────────────────────────────────────────────────
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    container_name: ecofirma-redis-exporter
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - ecofirma-network

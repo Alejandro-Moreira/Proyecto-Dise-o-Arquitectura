@@ -1,0 +1,20 @@
+# Dependencias
+node_modules/
+**/node_modules/
+
+# Variables de entorno con secretos (nunca al repo)
+.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# Cobertura de tests
+**/coverage/
+
+# Archivos de sistema operativo
+.DS_Store
+Thumbs.db
+
+# Docker volúmenes locales (solo datos)
+postgres-data/

@@ -1,0 +1,234 @@
+name: 🚀 CD — Build, Push & Deploy
+
+# ──────────────────────────────────────────────────────────────────
+# Se ejecuta SOLO cuando el CI pasa en la rama `main`
+# Estrategia de despliegue:
+#   1. Build y push de imágenes Docker a GitHub Container Registry (GHCR)
+#   2. Deploy a servidor de producción vía SSH (usando docker compose pull + up)
+#
+# Secrets requeridos en GitHub (Settings → Secrets → Actions):
+#   GHCR_TOKEN          → GitHub Personal Access Token con scope packages:write
+#   SSH_HOST            → IP o hostname del servidor de producción
+#   SSH_USER            → Usuario SSH del servidor
+#   SSH_PRIVATE_KEY     → Clave privada SSH (ed25519 o RSA)
+#   SSH_PORT            → Puerto SSH (default: 22)
+#   PROD_JWT_SECRET     → JWT_SECRET de producción
+#   PROD_POSTGRES_PASSWORD → Contraseña PG de producción
+#   PROD_RABBITMQ_PASSWORD → Contraseña RabbitMQ de producción
+#   PROD_INTERNAL_TOKEN → Token interno de producción
+# ──────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches: [main]
+  # Permite ejecutar manualmente desde la UI de GitHub
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Entorno de despliegue'
+        required: true
+        default: 'production'
+        type: choice
+        options: [production, staging]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/ecofirma
+
+jobs:
+
+  # ── Job 1: Build y push de imágenes Docker ───────────────────────
+  build-and-push:
+    name: 🐳 Build & Push Docker Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # Necesario para push a GHCR
+
+    strategy:
+      matrix:
+        service: [gateway, users-service, documents-service, signature-worker]
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      sha-short: ${{ steps.vars.outputs.sha_short }}
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Calcular SHA corto
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login en GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Extraer metadatos Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
+          tags: |
+            # Tag con SHA del commit (inmutable, trazable)
+            type=sha,prefix=sha-
+            # Tag `latest` solo en rama main
+            type=raw,value=latest,enable={{is_default_branch}}
+            # Tag semántico si se usa en un release (ej. v1.2.3)
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build y Push imagen ${{ matrix.service }}
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.service }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Metadatos de trazabilidad embebidos en la imagen
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ steps.vars.outputs.sha_short }}
+
+  # ── Job 2: Deploy a producción vía SSH ───────────────────────────
+  deploy:
+    name: 🌍 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment:
+      name: production
+      url: http://${{ secrets.SSH_HOST }}:8080
+
+    steps:
+      - name: Checkout código (para docker-compose.yml)
+        uses: actions/checkout@v4
+
+      - name: Calcular SHA corto
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Desplegar en servidor de producción vía SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          envs: IMAGE_TAG,REGISTRY,IMAGE_PREFIX
+          script: |
+            set -e
+            IMAGE_TAG="sha-${{ steps.vars.outputs.sha_short }}"
+            DEPLOY_DIR="$HOME/ecofirma"
+
+            echo "📦 Iniciando deploy EcoFirma tag: $IMAGE_TAG"
+
+            # Crear directorio de despliegue si no existe
+            mkdir -p $DEPLOY_DIR
+
+            # Login en GHCR desde el servidor
+            echo "${{ secrets.GHCR_TOKEN }}" | \
+              docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+            # Escribir variables de entorno de producción (no en el repo)
+            cat > $DEPLOY_DIR/.env << 'ENVEOF'
+            POSTGRES_USER=ecofirma_user
+            POSTGRES_PASSWORD=${{ secrets.PROD_POSTGRES_PASSWORD }}
+            POSTGRES_DB=ecofirma_db
+            POSTGRES_HOST=postgres
+            POSTGRES_PORT=5432
+            REDIS_HOST=redis
+            REDIS_PORT=6379
+            REDIS_TTL=300
+            RABBITMQ_USER=ecofirma_rabbit
+            RABBITMQ_PASSWORD=${{ secrets.PROD_RABBITMQ_PASSWORD }}
+            RABBITMQ_HOST=rabbitmq
+            RABBITMQ_PORT=5672
+            JWT_SECRET=${{ secrets.PROD_JWT_SECRET }}
+            JWT_EXPIRES_IN=1h
+            USERS_SERVICE_URL=http://users-service:3001
+            DOCUMENTS_SERVICE_URL=http://documents-service:3002
+            INTERNAL_TOKEN=${{ secrets.PROD_INTERNAL_TOKEN }}
+            GATEWAY_PORT=8080
+            USERS_SERVICE_PORT=3001
+            DOCUMENTS_SERVICE_PORT=3002
+            IMAGE_TAG=$IMAGE_TAG
+            REGISTRY=ghcr.io
+            IMAGE_PREFIX=${{ env.IMAGE_PREFIX }}
+            ENVEOF
+
+            # Descargar docker-compose de producción (usa imágenes pre-construidas)
+            cat > $DEPLOY_DIR/docker-compose.yml << 'DCEOF'
+            ${{ needs.build-and-push.outputs.image-tag }}
+            DCEOF
+
+            # Pull de las nuevas imágenes y deploy rolling (zero-downtime para stateless)
+            cd $DEPLOY_DIR
+
+            docker compose pull
+
+            # Deploy con rolling restart por servicio (no baja todo el stack)
+            docker compose up -d \
+              --no-deps \
+              --force-recreate \
+              gateway users-service documents-service signature-worker
+
+            echo "✅ Deploy completado exitosamente."
+            echo "📊 Estado del stack:"
+            docker compose ps
+
+      - name: Health check post-deploy
+        run: |
+          echo "⏳ Esperando que los servicios estén listos..."
+          sleep 15
+          STATUS=$(curl -sf http://${{ secrets.SSH_HOST }}:8080/health | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "error")
+          if [ "$STATUS" != "ok" ]; then
+            echo "❌ Health check fallido post-deploy. Status: $STATUS"
+            exit 1
+          fi
+          echo "✅ Servicio saludable en producción."
+
+      - name: Notificar deploy exitoso
+        if: success()
+        run: |
+          echo "🎉 Deploy de EcoFirma completado exitosamente."
+          echo "   Versión: sha-${{ steps.vars.outputs.sha_short }}"
+          echo "   Entorno: production"
+          echo "   URL: http://${{ secrets.SSH_HOST }}:8080"
+
+      - name: Notificar fallo de deploy
+        if: failure()
+        run: |
+          echo "💥 Deploy fallido para sha-${{ steps.vars.outputs.sha_short }}"
+          echo "   Revisar logs en Actions para diagnóstico."
+
+  # ── Job 3: Rollback automático (si el health check falla) ─────────
+  rollback:
+    name: ⏪ Rollback automático
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: failure()
+
+    steps:
+      - name: Rollback al último deploy estable
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            echo "⏪ Iniciando rollback..."
+            cd $HOME/ecofirma
+            # Volver a la imagen `latest` del deploy anterior
+            docker compose pull
+            docker compose up -d --force-recreate
+            echo "✅ Rollback completado."

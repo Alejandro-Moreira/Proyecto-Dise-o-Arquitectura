@@ -1,0 +1,79 @@
+groups:
+  - name: ecofirma.service.alerts
+    interval: 30s
+    rules:
+
+      # ── Alerta: Servicio caído ─────────────────────────────────────
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Servicio {{ $labels.job }} caído"
+          description: "El servicio {{ $labels.job }} no responde desde hace más de 1 minuto."
+
+      # ── Alerta: Alta tasa de errores HTTP (5xx) ───────────────────
+      - alert: HighErrorRate
+        expr: |
+          rate(http_requests_total{status=~"5.."}[5m]) /
+          rate(http_requests_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alta tasa de errores en {{ $labels.service }}"
+          description: "Más del 5% de requests están fallando en {{ $labels.service }} ({{ $value | humanizePercentage }})."
+
+      # ── Alerta: Latencia alta (p95 > 2s) ─────────────────────────
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket[5m])
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alta latencia en {{ $labels.service }}"
+          description: "El percentil 95 de latencia supera 2 segundos en {{ $labels.service }}."
+
+      # ── Alerta: Cola RabbitMQ acumulada (backlog) ─────────────────
+      - alert: RabbitMQQueueBacklog
+        expr: rabbitmq_queue_messages{queue="signature_queue"} > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backlog alto en signature_queue"
+          description: "Hay {{ $value }} mensajes pendientes en signature_queue. El worker puede estar atrasado."
+
+      # ── Alerta: Mensajes en Dead-Letter Queue ─────────────────────
+      - alert: MessagesInDLQ
+        expr: rabbitmq_queue_messages{queue="signature_dead_letter"} > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Mensajes en Dead-Letter Queue"
+          description: "Hay {{ $value }} mensajes fallidos en signature_dead_letter. Requiere atención inmediata."
+
+      # ── Alerta: Redis memoria alta ────────────────────────────────
+      - alert: RedisHighMemory
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis usando más del 85% de memoria"
+          description: "Redis está usando {{ $value | humanizePercentage }} de su memoria máxima."
+
+      # ── Alerta: PostgreSQL conexiones altas ───────────────────────
+      - alert: PostgreSQLHighConnections
+        expr: pg_stat_activity_count > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL con alta cantidad de conexiones"
+          description: "PostgreSQL tiene {{ $value }} conexiones activas (límite recomendado: 80)."

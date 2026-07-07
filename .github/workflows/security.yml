@@ -1,0 +1,55 @@
+name: 🔒 Security Scan
+
+# Escaneo de vulnerabilidades en dependencias y contenedores
+on:
+  schedule:
+    - cron: '0 6 * * 1'   # Lunes a las 6 AM UTC (semanal)
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # ── Escaneo de dependencias npm ───────────────────────────────────
+  audit-dependencies:
+    name: 📦 npm audit
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [gateway, users-service, documents-service, signature-worker]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Instalar dependencias (${{ matrix.service }})
+        working-directory: ${{ matrix.service }}
+        run: npm ci --prefer-offline
+      - name: npm audit (${{ matrix.service }})
+        working-directory: ${{ matrix.service }}
+        # Falla solo en vulnerabilidades HIGH o CRITICAL
+        run: npm audit --audit-level=high
+
+  # ── Escaneo de imágenes Docker con Trivy ─────────────────────────
+  trivy-scan:
+    name: 🛡️ Trivy Docker Scan
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [gateway, users-service, documents-service, signature-worker]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build imagen para escaneo (${{ matrix.service }})
+        run: docker build -t ecofirma-scan/${{ matrix.service }}:latest ./${{ matrix.service }}
+      - name: Escanear imagen con Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ecofirma-scan/${{ matrix.service }}:latest
+          format: 'sarif'
+          output: 'trivy-${{ matrix.service }}.sarif'
+          severity: 'CRITICAL,HIGH'
+      - name: Subir resultados SARIF a GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-${{ matrix.service }}.sarif'
+          category: 'trivy-${{ matrix.service }}'
