@@ -15,7 +15,7 @@ const express = require('express');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
+// const { v4: uuidv4 } = require('uuid');
 const morgan = require('morgan');
 const { register, metricsMiddleware } = require('./metrics');
 
@@ -66,7 +66,9 @@ async function initDB(retries = 10, delay = 3000) {
       return;
     } catch (err) {
       console.warn(`[Users] Intento ${attempt}/${retries} de conexión a PostgreSQL falló: ${err.message}`);
-      if (attempt === retries) throw err;
+      if (attempt === retries) {
+                throw err;
+      }
       await new Promise((r) => setTimeout(r, delay));
     }
   }
