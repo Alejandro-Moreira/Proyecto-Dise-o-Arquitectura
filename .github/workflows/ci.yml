@@ -196,7 +196,7 @@ jobs:
           echo ""
           echo "✅ Todos los servicios están saludables."
 
-      - name: Smoke test E2E: Registro → Login → Documento → Estado FIRMADO
+      - name: Smoke test E2E - Registro → Login → Documento → Estado FIRMADO
         run: |
           # 1. Registrar usuario
           REGISTER=$(curl -sf -X POST http://localhost:8080/api/users/register \
