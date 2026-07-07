@@ -1,38 +1,37 @@
-version: '3.9'
-
-# ──────────────────────────────────────────────────────────────────────────────
+﻿
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # EcoFirma - Docker Compose (con stack de monitoreo completo)
-# ──────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #
-# Decisión de diseño de base de datos:
+# DecisiÃ³n de diseÃ±o de base de datos:
 #   Se usa UNA SOLA base de datos PostgreSQL (ecofirma_db) compartida entre
 #   users-service y documents-service, con tablas separadas por servicio.
 #   Ventajas para entorno local:
-#     - Un único contenedor PG que gestionar
+#     - Un Ãºnico contenedor PG que gestionar
 #     - Menor consumo de recursos
-#     - Inicialización más sencilla
-#   En producción se recomendaría una DB por servicio para aislamiento total.
+#     - InicializaciÃ³n mÃ¡s sencilla
+#   En producciÃ³n se recomendarÃ­a una DB por servicio para aislamiento total.
 #
 # Levanta 11 contenedores:
-#   Aplicación (7):
+#   AplicaciÃ³n (7):
 #     1. postgres           - Base de datos relacional
-#     2. redis              - Caché en memoria
+#     2. redis              - CachÃ© en memoria
 #     3. rabbitmq           - Message broker
 #     4. gateway            - API Gateway (puerto 8080)
 #     5. users-service      - Servicio de usuarios
 #     6. documents-service  - Servicio de documentos
-#     7. signature-worker   - Worker de firma asíncrona
+#     7. signature-worker   - Worker de firma asÃ­ncrona
 #
 #   Monitoreo (4):
-#     8.  prometheus        - Recolección de métricas (puerto 9090)
+#     8.  prometheus        - RecolecciÃ³n de mÃ©tricas (puerto 9090)
 #     9.  grafana           - Dashboards (puerto 3000)
-#     10. postgres-exporter - Exporta métricas de PostgreSQL
-#     11. redis-exporter    - Exporta métricas de Redis
+#     10. postgres-exporter - Exporta mÃ©tricas de PostgreSQL
+#     11. redis-exporter    - Exporta mÃ©tricas de Redis
 #
 # Uso:
 #   1. cp .env.example .env   (ajusta valores si lo deseas)
 #   2. docker-compose up --build
-# ──────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 networks:
   ecofirma-network:
@@ -49,11 +48,26 @@ volumes:
 
 services:
 
-  # ─────────────────────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ecofirma-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    environment:
+      VITE_API_URL: ${PUBLIC_API_URL:-http://localhost:8080}
+    depends_on:
+      gateway:
+        condition: service_healthy
+    networks:
+      - ecofirma-network
+  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   # INFRAESTRUCTURA BASE
-  # ─────────────────────────────────────────────────────────────────────────────
+  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  # ── 1. PostgreSQL 16 ─────────────────────────────────────────────────────────
+  # â”€â”€ 1. PostgreSQL 16 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   postgres:
     image: postgres:16-alpine
     container_name: ecofirma-postgres
@@ -73,7 +87,7 @@ services:
       retries: 10
       start_period: 20s
 
-  # ── 2. Redis 7 ───────────────────────────────────────────────────────────────
+  # â”€â”€ 2. Redis 7 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   redis:
     image: redis:7-alpine
     container_name: ecofirma-redis
@@ -87,7 +101,7 @@ services:
       retries: 5
       start_period: 10s
 
-  # ── 3. RabbitMQ 3 (con métricas Prometheus nativas) ──────────────────────────
+  # â”€â”€ 3. RabbitMQ 3 (con mÃ©tricas Prometheus nativas) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: ecofirma-rabbitmq
@@ -95,14 +109,14 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
-      # Habilitar plugin de métricas Prometheus nativo de RabbitMQ
+      # Habilitar plugin de mÃ©tricas Prometheus nativo de RabbitMQ
       RABBITMQ_ENABLED_PLUGINS_FILE: /etc/rabbitmq/enabled_plugins
     volumes:
       - ./monitoring/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
     ports:
-      - "5672:5672"    # AMQP
-      - "15672:15672"  # Panel de administración web
-      # Puerto 15692 para métricas Prometheus (accesible solo internamente)
+      - "${RABBITMQ_AMQP_HOST_PORT:-5673}:5672"    # AMQP
+      - "${RABBITMQ_MANAGEMENT_HOST_PORT:-15673}:15672"  # Panel de administraciÃ³n web
+      # Puerto 15692 para mÃ©tricas Prometheus (accesible solo internamente)
     networks:
       - ecofirma-network
     healthcheck:
@@ -112,11 +126,11 @@ services:
       retries: 10
       start_period: 30s
 
-  # ─────────────────────────────────────────────────────────────────────────────
-  # MICROSERVICIOS DE APLICACIÓN
-  # ─────────────────────────────────────────────────────────────────────────────
+  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # MICROSERVICIOS DE APLICACIÃ“N
+  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  # ── 4. API Gateway ────────────────────────────────────────────────────────────
+  # â”€â”€ 4. API Gateway â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   gateway:
     build:
       context: ./gateway
@@ -129,6 +143,7 @@ services:
       GATEWAY_PORT: 8080
       USERS_SERVICE_URL: ${USERS_SERVICE_URL}
       DOCUMENTS_SERVICE_URL: ${DOCUMENTS_SERVICE_URL}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
     depends_on:
       users-service:
         condition: service_healthy
@@ -136,8 +151,14 @@ services:
         condition: service_healthy
     networks:
       - ecofirma-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
-  # ── 5. Users Service ──────────────────────────────────────────────────────────
+  # â”€â”€ 5. Users Service â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   users-service:
     build:
       context: ./users-service
@@ -165,7 +186,7 @@ services:
       retries: 10
       start_period: 30s
 
-  # ── 6. Documents Service ──────────────────────────────────────────────────────
+  # â”€â”€ 6. Documents Service â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   documents-service:
     build:
       context: ./documents-service
@@ -203,7 +224,7 @@ services:
       retries: 10
       start_period: 30s
 
-  # ── 7. Signature Worker ───────────────────────────────────────────────────────
+  # â”€â”€ 7. Signature Worker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   signature-worker:
     build:
       context: ./signature-worker
@@ -231,17 +252,17 @@ services:
       retries: 5
       start_period: 40s
 
-  # ─────────────────────────────────────────────────────────────────────────────
+  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   # STACK DE MONITOREO
-  # ─────────────────────────────────────────────────────────────────────────────
+  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  # ── 8. Prometheus ─────────────────────────────────────────────────────────────
+  # â”€â”€ 8. Prometheus â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   prometheus:
     image: prom/prometheus:v2.52.0
     container_name: ecofirma-prometheus
     restart: unless-stopped
     ports:
-      - "9090:9090"   # UI de Prometheus (explorador de métricas y alertas)
+      - "9090:9090"   # UI de Prometheus (explorador de mÃ©tricas y alertas)
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
@@ -249,10 +270,10 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=15d'   # Retención de 15 días
+      - '--storage.tsdb.retention.time=15d'   # RetenciÃ³n de 15 dÃ­as
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
-      - '--web.enable-lifecycle'              # Permite reload vía API
+      - '--web.enable-lifecycle'              # Permite reload vÃ­a API
     depends_on:
       - gateway
       - users-service
@@ -261,18 +282,18 @@ services:
     networks:
       - ecofirma-network
 
-  # ── 9. Grafana ────────────────────────────────────────────────────────────────
+  # â”€â”€ 9. Grafana â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   grafana:
     image: grafana/grafana:10.4.3
     container_name: ecofirma-grafana
     restart: unless-stopped
     ports:
-      - "3000:3000"   # Dashboard web de Grafana
+      - "${GRAFANA_PORT:-3001}:3000"   # Dashboard web de Grafana
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: ecofirma_grafana_admin
       GF_USERS_ALLOW_SIGN_UP: 'false'
-      GF_SERVER_ROOT_URL: http://localhost:3000
+      GF_SERVER_ROOT_URL: http://localhost:${GRAFANA_PORT:-3001}
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/ecofirma-dashboard.json
     volumes:
       - grafana-data:/var/lib/grafana
@@ -283,7 +304,7 @@ services:
     networks:
       - ecofirma-network
 
-  # ── 10. PostgreSQL Exporter ───────────────────────────────────────────────────
+  # â”€â”€ 10. PostgreSQL Exporter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.15.0
     container_name: ecofirma-postgres-exporter
@@ -296,7 +317,7 @@ services:
     networks:
       - ecofirma-network
 
-  # ── 11. Redis Exporter ────────────────────────────────────────────────────────
+  # â”€â”€ 11. Redis Exporter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   redis-exporter:
     image: oliver006/redis_exporter:v1.62.0
     container_name: ecofirma-redis-exporter

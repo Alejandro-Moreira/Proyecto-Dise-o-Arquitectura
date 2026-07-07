@@ -30,6 +30,15 @@ const DOCUMENTS_SERVICE_URL = process.env.DOCUMENTS_SERVICE_URL || 'http://docum
 app.use(morgan('combined'));
 // Instrumentación automática de todos los requests para Prometheus
 app.use(metricsMiddleware('gateway'));
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || '*');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Internal-Token');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  return next();
+});
 
 // ─── Health-check y métricas ──────────────────────────────────────────────────
 
@@ -61,6 +70,7 @@ function buildProxyOptions(target, name) {
   return {
     target,
     changeOrigin: true,
+    pathRewrite: (_path, req) => req.originalUrl,
     on: {
       error: (err, req, res) => {
         console.error(`[Gateway] Error al conectar con ${name}: ${err.message}`);
@@ -102,3 +112,5 @@ app.listen(PORT, () => {
   console.log(`[Gateway] → /api/signatures/* → ${DOCUMENTS_SERVICE_URL}`);
   console.log(`[Gateway] → /metrics          → Prometheus metrics`);
 });
+
+module.exports = app;

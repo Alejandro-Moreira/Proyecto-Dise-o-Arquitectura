@@ -25,9 +25,8 @@ const express = require('express');
 const { Pool } = require('pg');
 const Redis = require('ioredis');
 const amqp = require('amqplib');
-const { v4: uuidv4 } = require('uuid');
 const morgan = require('morgan');
-const { register, metricsMiddleware, documentsGauge, signaturesProcessed } = require('./metrics');
+const { register, metricsMiddleware } = require('./metrics');
 
 const app = express();
 const PORT = process.env.DOCUMENTS_SERVICE_PORT || 3002;
@@ -128,6 +127,7 @@ async function connectRabbitMQ(retries = 12, delay = 5000) {
 async function initDB(retries = 10, delay = 3000) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
+      await pool.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS documents (
           id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -135,10 +135,19 @@ async function initDB(retries = 10, delay = 3000) {
           contenido_base64 TEXT         NOT NULL,
           autor_id         VARCHAR(255) NOT NULL,
           estado           VARCHAR(20)  NOT NULL DEFAULT 'PENDIENTE'
-                             CHECK (estado IN ('PENDIENTE', 'FIRMADO')),
+                             CHECK (estado IN ('PENDIENTE', 'EN_PROCESO', 'FIRMADO', 'ERROR')),
           created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
           updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
         );
+      `);
+      await pool.query(`
+        ALTER TABLE documents
+        DROP CONSTRAINT IF EXISTS documents_estado_check;
+      `);
+      await pool.query(`
+        ALTER TABLE documents
+        ADD CONSTRAINT documents_estado_check
+        CHECK (estado IN ('PENDIENTE', 'EN_PROCESO', 'FIRMADO', 'ERROR'));
       `);
       console.log('[Documents] Tabla `documents` lista.');
       return;
@@ -201,6 +210,7 @@ function rowToDocumentResponse(row) {
     contenidoBase64: row.contenido_base64,
     autorId: row.autor_id,
     estado: row.estado,
+    status: row.estado,
   };
 }
 
@@ -341,6 +351,114 @@ app.get('/api/documents/:id', async (req, res) => {
   }
 });
 
+// ─── PUT /api/documents/:id ────────────────────────────────────────────────
+
+app.put('/api/documents/:id', async (req, res) => {
+  const { id } = req.params;
+  const { titulo, contenidoBase64 } = req.body;
+
+  if (titulo !== undefined && (typeof titulo !== 'string' || titulo.trim() === '')) {
+    return res.status(400).json({ error: 'El campo `titulo` debe ser texto no vacío.' });
+  }
+  if (contenidoBase64 !== undefined && typeof contenidoBase64 !== 'string') {
+    return res.status(400).json({ error: 'El campo `contenidoBase64` debe ser texto en Base64.' });
+  }
+  if (titulo === undefined && contenidoBase64 === undefined) {
+    return res.status(400).json({ error: 'Debe enviar al menos `titulo` o `contenidoBase64`.' });
+  }
+
+  try {
+    const current = await pool.query(
+      `SELECT id, titulo, contenido_base64, autor_id, estado
+       FROM documents
+       WHERE id = $1`,
+      [id]
+    );
+
+    if (current.rows.length === 0) {
+      return res.status(404).json({ error: `Documento con id "${id}" no encontrado.` });
+    }
+
+    const previous = current.rows[0];
+    const result = await pool.query(
+      `UPDATE documents
+       SET titulo = $1,
+           contenido_base64 = $2,
+           updated_at = NOW()
+       WHERE id = $3
+       RETURNING id, titulo, contenido_base64, autor_id, estado`,
+      [
+        titulo !== undefined ? titulo.trim() : previous.titulo,
+        contenidoBase64 !== undefined ? contenidoBase64 : previous.contenido_base64,
+        id,
+      ]
+    );
+
+    const doc = rowToDocumentResponse(result.rows[0]);
+
+    try {
+      await redis.setex(cacheKeyById(id), REDIS_TTL, JSON.stringify(doc));
+      await invalidateListCache();
+    } catch (cacheErr) {
+      console.error('[Documents] Error actualizando caché tras PUT:', cacheErr.message);
+    }
+
+    return res.status(200).json(doc);
+  } catch (err) {
+    console.error(`[Documents] Error en PUT /api/documents/${id}:`, err.message);
+    return res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+// ─── DELETE /api/documents/:id ─────────────────────────────────────────────
+
+app.delete('/api/documents/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query('DELETE FROM documents WHERE id = $1 RETURNING id', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: `Documento con id "${id}" no encontrado.` });
+    }
+
+    try {
+      await redis.del(cacheKeyById(id));
+      await invalidateListCache();
+    } catch (cacheErr) {
+      console.error('[Documents] Error invalidando caché tras DELETE:', cacheErr.message);
+    }
+
+    return res.status(204).send();
+  } catch (err) {
+    console.error(`[Documents] Error en DELETE /api/documents/${id}:`, err.message);
+    return res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+// ─── GET /api/documents/:id/status ─────────────────────────────────────────
+
+app.get('/api/documents/:id/status', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query('SELECT id, estado FROM documents WHERE id = $1', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: `Documento con id "${id}" no encontrado.` });
+    }
+
+    return res.status(200).json({
+      documentId: result.rows[0].id,
+      estado: result.rows[0].estado,
+      status: result.rows[0].estado,
+    });
+  } catch (err) {
+    console.error(`[Documents] Error en GET /api/documents/${id}/status:`, err.message);
+    return res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
 // ─── POST /api/signatures/process ────────────────────────────────────────────
 //
 // El Gateway enruta /api/signatures/* hacia este servicio.
@@ -360,6 +478,14 @@ app.post('/api/signatures/process', async (req, res) => {
     if (check.rows.length === 0) {
       return res.status(404).json({ error: `Documento con id "${documentId}" no encontrado.` });
     }
+    await pool.query(
+      `UPDATE documents
+       SET estado = 'EN_PROCESO', updated_at = NOW()
+       WHERE id = $1`,
+      [documentId.trim()]
+    );
+    await redis.del(cacheKeyById(documentId.trim())).catch(() => null);
+    await invalidateListCache();
   } catch (err) {
     console.error('[Documents] Error verificando documento:', err.message);
     return res.status(500).json({ error: 'Error interno del servidor.' });
@@ -373,7 +499,12 @@ app.post('/api/signatures/process', async (req, res) => {
     const message = JSON.stringify({ documentId: documentId.trim() });
     rabbitChannel.sendToQueue(SIGNATURE_QUEUE, Buffer.from(message), { persistent: true });
     console.log(`[Documents] Firma solicitada manualmente para documentId=${documentId}`);
-    return res.status(202).json({ message: 'Signature processing initiated' });
+    return res.status(202).json({
+      message: 'Signature processing initiated',
+      documentId: documentId.trim(),
+      estado: 'EN_PROCESO',
+      status: 'EN_PROCESO',
+    });
   } catch (err) {
     console.error('[Documents] Error publicando en cola:', err.message);
     return res.status(500).json({ error: 'Error interno del servidor.' });
@@ -399,7 +530,7 @@ app.patch('/api/documents/:id/status', async (req, res) => {
   const { id } = req.params;
   const { estado } = req.body;
 
-  const validStates = ['PENDIENTE', 'FIRMADO'];
+  const validStates = ['PENDIENTE', 'EN_PROCESO', 'FIRMADO', 'ERROR'];
   if (!estado || !validStates.includes(estado)) {
     return res.status(400).json({ error: `El campo \`estado\` debe ser uno de: ${validStates.join(', ')}.` });
   }
@@ -446,7 +577,15 @@ async function start() {
   });
 }
 
-start().catch((err) => {
-  console.error('[Documents] Error fatal en el arranque:', err.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  start().catch((err) => {
+    console.error('[Documents] Error fatal en el arranque:', err.message);
+    process.exit(1);
+  });
+} else if (process.env.NODE_ENV === 'test') {
+  initDB()
+    .then(() => connectRabbitMQ())
+    .catch((err) => console.error('[Documents] Error inicializando tests:', err.message));
+}
+
+module.exports = app;

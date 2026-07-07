@@ -22,6 +22,7 @@
 const amqp = require('amqplib');
 const axios = require('axios');
 const express = require('express');
+const { register, metricsMiddleware, signaturesProcessed } = require('./metrics');
 
 // ─── Variables de entorno ─────────────────────────────────────────────────────
 
@@ -44,8 +45,17 @@ const CRYPTO_PROCESSING_DELAY_MS = 3000;
 // ─── Servidor HTTP mínimo (solo para healthcheck) ─────────────────────────────
 
 const healthApp = express();
+healthApp.use(metricsMiddleware('signature-worker'));
 healthApp.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'ecofirma-signature-worker' });
+});
+healthApp.get('/metrics', async (_req, res) => {
+  try {
+    res.set('Content-Type', register.contentType);
+    res.end(await register.metrics());
+  } catch (err) {
+    res.status(500).end(err.message);
+  }
 });
 healthApp.listen(3003, () => {
   console.log('[Worker] Servidor de healthcheck escuchando en http://0.0.0.0:3003');
@@ -161,6 +171,7 @@ async function startWorker(retries = 15, delay = 5000) {
             );
             // nack sin requeue → RabbitMQ lo enrutará al DLX automáticamente
             channel.nack(msg, false, false);
+            signaturesProcessed.inc({ result: 'error' });
             return;
           }
 
@@ -172,6 +183,7 @@ async function startWorker(retries = 15, delay = 5000) {
 
           // ack manual: confirma que el mensaje fue procesado exitosamente
           channel.ack(msg);
+          signaturesProcessed.inc({ result: 'success' });
           console.log(`[Worker] ✔ Mensaje procesado y confirmado (ack) para documentId=${documentId}`);
         } catch (err) {
           const context = documentId ? `documentId=${documentId}` : 'mensaje desconocido';
@@ -187,6 +199,7 @@ async function startWorker(retries = 15, delay = 5000) {
           // nack con requeue=true → el mensaje vuelve a la cola para reintento
           // Si llega al límite MAX_RETRIES, la próxima iteración lo enviará a DLQ
           channel.nack(msg, false, true);
+          signaturesProcessed.inc({ result: 'error' });
           console.warn(`[Worker] ↩ Mensaje reencola para reintento.`);
         }
       });

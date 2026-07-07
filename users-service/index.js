@@ -13,7 +13,7 @@
 
 const express = require('express');
 const { Pool } = require('pg');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 // const { v4: uuidv4 } = require('uuid');
 const morgan = require('morgan');
@@ -53,6 +53,7 @@ const pool = new Pool({
 async function initDB(retries = 10, delay = 3000) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
+      await pool.query('CREATE EXTENSION IF NOT EXISTS pgcrypto;');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS users (
           id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -128,7 +129,7 @@ app.post('/api/users/register', async (req, res) => {
     const user = result.rows[0];
     console.log(`[Users] Usuario registrado: ${user.userId} (${user.email})`);
 
-    return res.status(200).json(user);
+    return res.status(201).json(user);
   } catch (err) {
     // Código 23505 = violación de clave única en PostgreSQL (email duplicado)
     if (err.code === '23505') {
@@ -178,7 +179,14 @@ app.post('/api/users/login', async (req, res) => {
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
     console.log(`[Users] Login exitoso: ${user.email}`);
-    return res.status(200).json({ token });
+    return res.status(200).json({
+      token,
+      user: {
+        userId: user.userId,
+        nombre: user.nombre,
+        email: user.email,
+      },
+    });
   } catch (err) {
     console.error('[Users] Error en /login:', err.message);
     return res.status(500).json({ error: 'Error interno del servidor. Intenta de nuevo más tarde.' });
@@ -187,13 +195,20 @@ app.post('/api/users/login', async (req, res) => {
 
 // ─── Arranque ─────────────────────────────────────────────────────────────────
 
-initDB()
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`[Users] EcoFirma Users Service escuchando en http://0.0.0.0:${PORT}`);
-    });
-  })
-  .catch((err) => {
+async function start() {
+  await initDB();
+  app.listen(PORT, () => {
+    console.log(`[Users] EcoFirma Users Service escuchando en http://0.0.0.0:${PORT}`);
+  });
+}
+
+if (require.main === module) {
+  start().catch((err) => {
     console.error('[Users] No se pudo inicializar la base de datos:', err.message);
     process.exit(1);
   });
+} else if (process.env.NODE_ENV === 'test') {
+  initDB().catch((err) => console.error('[Users] Error inicializando tests:', err.message));
+}
+
+module.exports = app;

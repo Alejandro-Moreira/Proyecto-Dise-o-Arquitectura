@@ -46,7 +46,7 @@ jobs:
 
     strategy:
       matrix:
-        service: [gateway, users-service, documents-service, signature-worker]
+        service: [frontend, gateway, users-service, documents-service, signature-worker]
 
     outputs:
       image-tag: ${{ steps.meta.outputs.tags }}
@@ -179,7 +179,7 @@ jobs:
             docker compose up -d \
               --no-deps \
               --force-recreate \
-              gateway users-service documents-service signature-worker
+              frontend gateway users-service documents-service signature-worker
 
             echo "✅ Deploy completado exitosamente."
             echo "📊 Estado del stack:"

@@ -1,89 +1,68 @@
-# ──────────────────────────────────────────────────────────────────────────────
-# Prometheus — Configuración de scraping para EcoFirma
-# ──────────────────────────────────────────────────────────────────────────────
-# Recoge métricas de todos los microservicios cada 15 segundos.
-# Cada servicio expone /metrics en formato Prometheus (prom-client).
-# ──────────────────────────────────────────────────────────────────────────────
-
-global:
-  scrape_interval: 15s          # Frecuencia de recolección de métricas
-  evaluation_interval: 15s      # Frecuencia de evaluación de alertas
+﻿global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
   scrape_timeout: 10s
 
-# Reglas de alerta (referenciadas abajo)
 rule_files:
   - /etc/prometheus/rules/*.yml
 
-# Alertmanager (opcional — descomentar si se configura)
-# alerting:
-#   alertmanagers:
-#     - static_configs:
-#         - targets: ['alertmanager:9093']
-
 scrape_configs:
-
-  # ── Prometheus se monitorea a sí mismo ─────────────────────────────
-  - job_name: 'prometheus'
+  - job_name: prometheus
     static_configs:
       - targets: ['localhost:9090']
+        labels:
+          service: prometheus
+          environment: local
 
-  # ── API Gateway ─────────────────────────────────────────────────────
-  - job_name: 'ecofirma-gateway'
+  - job_name: ecofirma-gateway
+    metrics_path: /metrics
     static_configs:
       - targets: ['gateway:8080']
-    metrics_path: '/metrics'
-    scrape_interval: 15s
-    labels:
-      service: 'gateway'
-      environment: 'local'
+        labels:
+          service: gateway
+          environment: local
 
-  # ── Users Service ───────────────────────────────────────────────────
-  - job_name: 'ecofirma-users-service'
+  - job_name: ecofirma-users-service
+    metrics_path: /metrics
     static_configs:
       - targets: ['users-service:3001']
-    metrics_path: '/metrics'
-    scrape_interval: 15s
-    labels:
-      service: 'users-service'
-      environment: 'local'
+        labels:
+          service: users-service
+          environment: local
 
-  # ── Documents Service ───────────────────────────────────────────────
-  - job_name: 'ecofirma-documents-service'
+  - job_name: ecofirma-documents-service
+    metrics_path: /metrics
     static_configs:
       - targets: ['documents-service:3002']
-    metrics_path: '/metrics'
-    scrape_interval: 15s
-    labels:
-      service: 'documents-service'
-      environment: 'local'
+        labels:
+          service: documents-service
+          environment: local
 
-  # ── Signature Worker (healthcheck server en 3003) ───────────────────
-  - job_name: 'ecofirma-signature-worker'
+  - job_name: ecofirma-signature-worker
+    metrics_path: /metrics
     static_configs:
       - targets: ['signature-worker:3003']
-    metrics_path: '/metrics'
-    scrape_interval: 15s
-    labels:
-      service: 'signature-worker'
-      environment: 'local'
+        labels:
+          service: signature-worker
+          environment: local
 
-  # ── PostgreSQL Exporter ─────────────────────────────────────────────
-  - job_name: 'postgres-exporter'
+  - job_name: postgres-exporter
     static_configs:
       - targets: ['postgres-exporter:9187']
-    labels:
-      service: 'postgres'
+        labels:
+          service: postgres
+          environment: local
 
-  # ── Redis Exporter ──────────────────────────────────────────────────
-  - job_name: 'redis-exporter'
+  - job_name: redis-exporter
     static_configs:
       - targets: ['redis-exporter:9121']
-    labels:
-      service: 'redis'
+        labels:
+          service: redis
+          environment: local
 
-  # ── RabbitMQ Exporter ───────────────────────────────────────────────
-  - job_name: 'rabbitmq'
+  - job_name: rabbitmq
     static_configs:
-      - targets: ['rabbitmq:15692']   # Puerto de métricas nativas de RabbitMQ
-    labels:
-      service: 'rabbitmq'
+      - targets: ['rabbitmq:15692']
+        labels:
+          service: rabbitmq
+          environment: local

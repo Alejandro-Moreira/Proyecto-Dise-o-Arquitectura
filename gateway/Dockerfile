@@ -10,7 +10,7 @@ COPY package.json ./
 RUN npm install --omit=dev
 
 # Copiar código fuente
-COPY index.js ./
+COPY index.js metrics.js ./
 
 # Usuario no-root por seguridad
 USER node

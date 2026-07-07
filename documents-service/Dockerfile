@@ -7,7 +7,7 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev
 
-COPY index.js ./
+COPY index.js metrics.js ./
 
 USER node
 

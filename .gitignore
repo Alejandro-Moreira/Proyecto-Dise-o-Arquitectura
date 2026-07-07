@@ -12,6 +12,9 @@ npm-debug.log*
 # Cobertura de tests
 **/coverage/
 
+# Builds locales
+**/dist/
+
 # Archivos de sistema operativo
 .DS_Store
 Thumbs.db

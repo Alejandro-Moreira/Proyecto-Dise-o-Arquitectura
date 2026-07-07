@@ -21,8 +21,8 @@ jest.mock('pg', () => {
   };
 });
 
-// Mock de bcrypt
-jest.mock('bcrypt', () => ({
+// Mock de bcryptjs
+jest.mock('bcryptjs', () => ({
   hash: jest.fn().mockResolvedValue('hashed_password_mock'),
   compare: jest.fn(),
 }));
@@ -33,8 +33,6 @@ jest.mock('jsonwebtoken', () => ({
 }));
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const bcrypt = require('bcrypt');
 
 /**
  * Carga la app después de configurar los mocks para evitar que initDB()
@@ -64,7 +62,7 @@ describe('POST /api/users/register', () => {
     jest.clearAllMocks();
   });
 
-  test('registra usuario correctamente y devuelve 200 con userId, nombre y email', async () => {
+  test('registra usuario correctamente y devuelve 201 con userId, nombre y email', async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{
         userId: 'uuid-test-1',
@@ -77,7 +75,7 @@ describe('POST /api/users/register', () => {
       .post('/api/users/register')
       .send({ nombre: 'Ana García', email: 'ana@test.com', password: 'password123' });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(res.body).toHaveProperty('userId');
     expect(res.body).toHaveProperty('nombre', 'Ana García');
     expect(res.body).toHaveProperty('email', 'ana@test.com');
@@ -148,7 +146,7 @@ describe('POST /api/users/login', () => {
         password_hash: 'hashed',
       }],
     });
-    bcrypt.compare.mockResolvedValueOnce(true);
+    require('bcryptjs').compare.mockResolvedValueOnce(true);
 
     const res = await request(app)
       .post('/api/users/login')
@@ -156,6 +154,7 @@ describe('POST /api/users/login', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('token');
+    expect(res.body).toHaveProperty('user');
     expect(typeof res.body.token).toBe('string');
   });
 
@@ -174,7 +173,7 @@ describe('POST /api/users/login', () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ userId: 'uuid-1', nombre: 'Ana', email: 'ana@test.com', password_hash: 'hashed' }],
     });
-    bcrypt.compare.mockResolvedValueOnce(false);
+    require('bcryptjs').compare.mockResolvedValueOnce(false);
 
     const res = await request(app)
       .post('/api/users/login')

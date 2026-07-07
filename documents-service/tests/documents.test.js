@@ -60,6 +60,7 @@ const SAMPLE_DOC_RESPONSE = {
   contenidoBase64: 'Q29udGVuaWRv',
   autorId: 'user-uuid-456',
   estado: 'PENDIENTE',
+  status: 'PENDIENTE',
 };
 
 // ─── Setup ───────────────────────────────────────────────────────────────────
@@ -197,6 +198,66 @@ describe('GET /api/documents/:id', () => {
   });
 });
 
+describe('PUT /api/documents/:id', () => {
+  test('actualiza un documento existente', async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [SAMPLE_DOC_ROW] })
+      .mockResolvedValueOnce({
+        rows: [{ ...SAMPLE_DOC_ROW, titulo: 'Contrato Actualizado' }],
+      });
+
+    const res = await request(app)
+      .put('/api/documents/doc-uuid-123')
+      .send({ titulo: 'Contrato Actualizado' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.titulo).toBe('Contrato Actualizado');
+    expect(mockRedisSetex).toHaveBeenCalled();
+    expect(mockRedisDel).toHaveBeenCalled();
+  });
+
+  test('devuelve 404 al actualizar documento inexistente', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(app)
+      .put('/api/documents/no-existe')
+      .send({ titulo: 'Nuevo título' });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('DELETE /api/documents/:id', () => {
+  test('elimina un documento existente', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'doc-uuid-123' }] });
+
+    const res = await request(app).delete('/api/documents/doc-uuid-123');
+
+    expect(res.status).toBe(204);
+    expect(mockRedisDel).toHaveBeenCalled();
+  });
+
+  test('devuelve 404 al eliminar documento inexistente', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(app).delete('/api/documents/no-existe');
+
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('GET /api/documents/:id/status', () => {
+  test('devuelve el estado público del documento', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'doc-uuid-123', estado: 'FIRMADO' }] });
+
+    const res = await request(app).get('/api/documents/doc-uuid-123/status');
+
+    expect(res.status).toBe(200);
+    expect(res.body.documentId).toBe('doc-uuid-123');
+    expect(res.body.status).toBe('FIRMADO');
+  });
+});
+
 // ─── Tests: PATCH /api/documents/:id/status [INTERNO] ────────────────────────
 
 describe('PATCH /api/documents/:id/status (interno)', () => {
@@ -212,6 +273,7 @@ describe('PATCH /api/documents/:id/status (interno)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.estado).toBe('FIRMADO');
+    expect(res.body.status).toBe('FIRMADO');
     // Verifica que se invalida la caché
     expect(mockRedisDel).toHaveBeenCalled();
   });

@@ -153,6 +153,8 @@ jobs:
             context: ./documents-service
           - name: signature-worker
             context: ./signature-worker
+          - name: frontend
+            context: ./frontend
 
     steps:
       - name: Checkout código

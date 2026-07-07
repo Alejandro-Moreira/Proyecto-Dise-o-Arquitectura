@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [gateway, users-service, documents-service, signature-worker]
+        service: [frontend, gateway, users-service, documents-service, signature-worker]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -42,7 +42,7 @@ jobs:
           security-events: write      
     strategy:
       matrix:
-        service: [gateway, users-service, documents-service, signature-worker]
+        service: [frontend, gateway, users-service, documents-service, signature-worker]
     steps:
       - uses: actions/checkout@v4
       - name: Build imagen para escaneo (${{ matrix.service }})
