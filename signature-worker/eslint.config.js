@@ -1,4 +1,7 @@
-export default [
+// eslint.config.js — CommonJS format (no "type":"module" in package.json)
+'use strict';
+
+module.exports = [
   {
     languageOptions: {
       ecmaVersion: 2022,
