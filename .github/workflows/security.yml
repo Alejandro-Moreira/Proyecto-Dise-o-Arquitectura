@@ -37,6 +37,9 @@ jobs:
   trivy-scan:
     name: 🛡️ Trivy Docker Scan
     runs-on: ubuntu-latest
+    permissions:
+          contents: read
+          security-events: write      
     strategy:
       matrix:
         service: [gateway, users-service, documents-service, signature-worker]
