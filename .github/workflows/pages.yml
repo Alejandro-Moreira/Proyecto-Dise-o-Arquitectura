@@ -40,7 +40,7 @@ jobs:
         run: npm run build
         env:
           GITHUB_PAGES: 'true'
-          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_API_URL: ${{ vars.VITE_API_URL || 'https://ecofirma-gateway.onrender.com' }}
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
