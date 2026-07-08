@@ -59,6 +59,43 @@ Ruta en GitHub:
 Settings -> Secrets and variables -> Actions -> Variables -> New repository variable
 ```
 
+## Despliegue completo en Render
+
+El repositorio incluye un Blueprint de Render en:
+
+```text
+render.yaml
+```
+
+Este archivo define la infraestructura cloud de EcoFirma:
+
+- `ecofirma-frontend`: Static Site público para React/Vite.
+- `ecofirma-gateway`: Web Service público para el API Gateway.
+- `ecofirma-users-service`: Private Service para autenticación.
+- `ecofirma-documents-service`: Private Service para documentos.
+- `ecofirma-signature-worker`: Background Worker para firma asíncrona.
+- `ecofirma-rabbitmq`: Private Service Docker para mensajería AMQP.
+- `ecofirma-redis`: Render Key Value para caché.
+- `ecofirma-postgres`: Render PostgreSQL administrado.
+
+URLs públicas esperadas:
+
+```text
+Frontend: https://ecofirma-frontend.onrender.com
+API Gateway: https://ecofirma-gateway.onrender.com
+```
+
+Pasos para desplegar:
+
+1. Subir el repositorio a GitHub.
+2. Entrar a Render.
+3. Seleccionar `New +` -> `Blueprint`.
+4. Conectar el repositorio `Proyecto-Dise-o-Arquitectura`.
+5. Confirmar el archivo `render.yaml`.
+6. Crear el Blueprint.
+
+Render creará los secretos automáticamente con `generateValue`, incluyendo `JWT_SECRET`, `INTERNAL_TOKEN` y la contraseña de RabbitMQ.
+
 ## Flujo de demo
 
 1. Registrar usuario.

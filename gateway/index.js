@@ -20,7 +20,7 @@ const { createProxyMiddleware } = require('http-proxy-middleware');
 const { register, metricsMiddleware } = require('./metrics');
 
 const app = express();
-const PORT = process.env.GATEWAY_PORT || 8080;
+const PORT = process.env.PORT || process.env.GATEWAY_PORT || 8080;
 
 const USERS_SERVICE_URL = process.env.USERS_SERVICE_URL || 'http://users-service:3001';
 const DOCUMENTS_SERVICE_URL = process.env.DOCUMENTS_SERVICE_URL || 'http://documents-service:3002';

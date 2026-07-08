@@ -20,7 +20,7 @@ const morgan = require('morgan');
 const { register, metricsMiddleware } = require('./metrics');
 
 const app = express();
-const PORT = process.env.USERS_SERVICE_PORT || 3001;
+const PORT = process.env.PORT || process.env.USERS_SERVICE_PORT || 3001;
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
@@ -32,15 +32,19 @@ if (!JWT_SECRET) {
 
 // ─── Conexión a PostgreSQL ────────────────────────────────────────────────────
 
-const pool = new Pool({
-  host: process.env.POSTGRES_HOST || 'postgres',
-  port: Number(process.env.POSTGRES_PORT) || 5432,
-  database: process.env.POSTGRES_DB || 'ecofirma_db',
-  user: process.env.POSTGRES_USER || 'ecofirma_user',
-  password: process.env.POSTGRES_PASSWORD,
-  // Reintentos de conexión (la DB puede tardar en arrancar)
-  connectionTimeoutMillis: 5000,
-});
+const pool = new Pool(process.env.DATABASE_URL
+  ? {
+      connectionString: process.env.DATABASE_URL,
+      connectionTimeoutMillis: 5000,
+    }
+  : {
+      host: process.env.POSTGRES_HOST || 'postgres',
+      port: Number(process.env.POSTGRES_PORT) || 5432,
+      database: process.env.POSTGRES_DB || 'ecofirma_db',
+      user: process.env.POSTGRES_USER || 'ecofirma_user',
+      password: process.env.POSTGRES_PASSWORD,
+      connectionTimeoutMillis: 5000,
+    });
 
 // ─── Inicialización de tabla ──────────────────────────────────────────────────
 

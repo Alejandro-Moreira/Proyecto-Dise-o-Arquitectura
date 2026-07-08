@@ -1,0 +1,151 @@
+services:
+  - type: web
+    runtime: static
+    name: ecofirma-frontend
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: frontend/dist
+    autoDeployTrigger: commit
+    envVars:
+      - key: VITE_API_URL
+        value: https://ecofirma-gateway.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  - type: web
+    runtime: docker
+    name: ecofirma-gateway
+    plan: starter
+    dockerContext: ./gateway
+    dockerfilePath: ./gateway/Dockerfile
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: USERS_SERVICE_URL
+        value: http://ecofirma-users-service:10000
+      - key: DOCUMENTS_SERVICE_URL
+        value: http://ecofirma-documents-service:10000
+      - key: CORS_ORIGIN
+        value: https://ecofirma-frontend.onrender.com
+
+  - type: pserv
+    runtime: docker
+    name: ecofirma-users-service
+    plan: starter
+    dockerContext: ./users-service
+    dockerfilePath: ./users-service/Dockerfile
+    autoDeployTrigger: commit
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ecofirma-postgres
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 2h
+
+  - type: pserv
+    runtime: docker
+    name: ecofirma-documents-service
+    plan: starter
+    dockerContext: ./documents-service
+    dockerfilePath: ./documents-service/Dockerfile
+    autoDeployTrigger: commit
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ecofirma-postgres
+          property: connectionString
+      - key: REDIS_HOST
+        fromService:
+          type: keyvalue
+          name: ecofirma-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: keyvalue
+          name: ecofirma-redis
+          property: port
+      - key: REDIS_TTL
+        value: 300
+      - key: RABBITMQ_HOST
+        fromService:
+          type: pserv
+          name: ecofirma-rabbitmq
+          property: host
+      - key: RABBITMQ_PORT
+        value: 5672
+      - key: RABBITMQ_USER
+        value: ecofirma
+      - key: RABBITMQ_PASSWORD
+        fromService:
+          type: pserv
+          name: ecofirma-rabbitmq
+          envVarKey: RABBITMQ_DEFAULT_PASS
+      - key: INTERNAL_TOKEN
+        generateValue: true
+
+  - type: worker
+    runtime: docker
+    name: ecofirma-signature-worker
+    plan: starter
+    dockerContext: ./signature-worker
+    dockerfilePath: ./signature-worker/Dockerfile
+    autoDeployTrigger: commit
+    envVars:
+      - key: DOCUMENTS_SERVICE_URL
+        value: http://ecofirma-documents-service:10000
+      - key: RABBITMQ_HOST
+        fromService:
+          type: pserv
+          name: ecofirma-rabbitmq
+          property: host
+      - key: RABBITMQ_PORT
+        value: 5672
+      - key: RABBITMQ_USER
+        value: ecofirma
+      - key: RABBITMQ_PASSWORD
+        fromService:
+          type: pserv
+          name: ecofirma-rabbitmq
+          envVarKey: RABBITMQ_DEFAULT_PASS
+      - key: INTERNAL_TOKEN
+        fromService:
+          type: pserv
+          name: ecofirma-documents-service
+          envVarKey: INTERNAL_TOKEN
+
+  - type: pserv
+    runtime: docker
+    name: ecofirma-rabbitmq
+    plan: starter
+    dockerContext: .
+    dockerfilePath: ./rabbitmq/Dockerfile
+    autoDeployTrigger: commit
+    envVars:
+      - key: PORT
+        value: 5672
+      - key: RABBITMQ_DEFAULT_USER
+        value: ecofirma
+      - key: RABBITMQ_DEFAULT_PASS
+        generateValue: true
+
+  - type: keyvalue
+    name: ecofirma-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    persistenceMode: off
+    ipAllowList: []
+
+databases:
+  - name: ecofirma-postgres
+    databaseName: ecofirma_db
+    user: ecofirma_user
+    plan: free
+    ipAllowList: []

@@ -29,7 +29,7 @@ const morgan = require('morgan');
 const { register, metricsMiddleware } = require('./metrics');
 
 const app = express();
-const PORT = process.env.DOCUMENTS_SERVICE_PORT || 3002;
+const PORT = process.env.PORT || process.env.DOCUMENTS_SERVICE_PORT || 3002;
 
 // ─── Variables de entorno ─────────────────────────────────────────────────────
 
@@ -44,14 +44,19 @@ const SIGNATURE_QUEUE = 'signature_queue';
 
 // ─── Conexión a PostgreSQL ────────────────────────────────────────────────────
 
-const pool = new Pool({
-  host: process.env.POSTGRES_HOST || 'postgres',
-  port: Number(process.env.POSTGRES_PORT) || 5432,
-  database: process.env.POSTGRES_DB || 'ecofirma_db',
-  user: process.env.POSTGRES_USER || 'ecofirma_user',
-  password: process.env.POSTGRES_PASSWORD,
-  connectionTimeoutMillis: 5000,
-});
+const pool = new Pool(process.env.DATABASE_URL
+  ? {
+      connectionString: process.env.DATABASE_URL,
+      connectionTimeoutMillis: 5000,
+    }
+  : {
+      host: process.env.POSTGRES_HOST || 'postgres',
+      port: Number(process.env.POSTGRES_PORT) || 5432,
+      database: process.env.POSTGRES_DB || 'ecofirma_db',
+      user: process.env.POSTGRES_USER || 'ecofirma_user',
+      password: process.env.POSTGRES_PASSWORD,
+      connectionTimeoutMillis: 5000,
+    });
 
 // ─── Conexión a Redis ─────────────────────────────────────────────────────────
 
@@ -153,7 +158,9 @@ async function initDB(retries = 10, delay = 3000) {
       return;
     } catch (err) {
       console.warn(`[Documents] Intento ${attempt}/${retries} de conexión a PostgreSQL falló: ${err.message}`);
-      if (attempt === retries) throw err;
+      if (attempt === retries) {
+        throw err;
+      }
       await new Promise((r) => setTimeout(r, delay));
     }
   }

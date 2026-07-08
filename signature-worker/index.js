@@ -32,6 +32,7 @@ const RABBITMQ_HOST = process.env.RABBITMQ_HOST || 'rabbitmq';
 const RABBITMQ_PORT = process.env.RABBITMQ_PORT || 5672;
 const RABBITMQ_URL = `amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@${RABBITMQ_HOST}:${RABBITMQ_PORT}`;
 const SIGNATURE_QUEUE = 'signature_queue';
+const HEALTH_PORT = process.env.PORT || process.env.SIGNATURE_WORKER_PORT || 3003;
 
 const DOCUMENTS_SERVICE_URL = process.env.DOCUMENTS_SERVICE_URL || 'http://documents-service:3002';
 const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN || '';
@@ -57,8 +58,8 @@ healthApp.get('/metrics', async (_req, res) => {
     res.status(500).end(err.message);
   }
 });
-healthApp.listen(3003, () => {
-  console.log('[Worker] Servidor de healthcheck escuchando en http://0.0.0.0:3003');
+healthApp.listen(HEALTH_PORT, () => {
+  console.log(`[Worker] Servidor de healthcheck escuchando en http://0.0.0.0:${HEALTH_PORT}`);
 });
 
 // ─── Procesamiento de un mensaje ──────────────────────────────────────────────
