@@ -22,6 +22,8 @@ services:
     healthCheckPath: /health
     autoDeployTrigger: commit
     envVars:
+      - key: PORT
+        value: 8080
       - key: USERS_SERVICE_URL
         value: https://ecofirma-users-service.onrender.com
       - key: DOCUMENTS_SERVICE_URL
@@ -44,7 +46,7 @@ services:
     autoDeployTrigger: commit
     envVars:
       - key: PORT
-        value: 10000
+        value: 3001
       - key: DATABASE_URL
         fromDatabase:
           name: ecofirma-postgres
@@ -67,7 +69,7 @@ services:
     autoDeployTrigger: commit
     envVars:
       - key: PORT
-        value: 10000
+        value: 3002
       - key: DATABASE_URL
         fromDatabase:
           name: ecofirma-postgres

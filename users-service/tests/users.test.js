@@ -11,11 +11,11 @@ const request = require('supertest');
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
-// Mock de mysql2/promise
+// Mock de pg
 const mockQuery = jest.fn();
-jest.mock('mysql2/promise', () => {
+jest.mock('pg', () => {
   return {
-    createPool: jest.fn().mockImplementation(() => ({
+    Pool: jest.fn().mockImplementation(() => ({
       query: mockQuery,
     })),
   };
@@ -40,10 +40,9 @@ jest.mock('jsonwebtoken', () => ({
  */
 function loadApp() {
   // Forzar que initDB() tenga éxito sin DB real
-  mockQuery.mockResolvedValueOnce([[]]); // CREATE TABLE IF NOT EXISTS
+  mockQuery.mockResolvedValueOnce({ rows: [] }); // CREATE TABLE IF NOT EXISTS
   jest.resetModules();
   process.env.JWT_SECRET = 'test_secret_min_32_chars_ok_here';
-  process.env.MYSQL_PASSWORD = 'test_password';
   return require('../index');
 }
 
@@ -63,7 +62,7 @@ describe('POST /api/users/register', () => {
   });
 
   test('registra usuario correctamente y devuelve 201 con userId, nombre y email', async () => {
-    mockQuery.mockResolvedValueOnce([[]]);
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await request(app)
       .post('/api/users/register')
@@ -103,10 +102,10 @@ describe('POST /api/users/register', () => {
     expect(res.body.error).toMatch(/password/i);
   });
 
-  test('devuelve 409 si el email ya está registrado (MySQL error ER_DUP_ENTRY)', async () => {
-    const mysqlError = new Error('Duplicate entry');
-    mysqlError.code = 'ER_DUP_ENTRY';
-    mockQuery.mockRejectedValueOnce(mysqlError);
+  test('devuelve 409 si el email ya está registrado (PostgreSQL error 23505)', async () => {
+    const pgError = new Error('duplicate key value violates unique constraint');
+    pgError.code = '23505';
+    mockQuery.mockRejectedValueOnce(pgError);
 
     const res = await request(app)
       .post('/api/users/register')
@@ -132,12 +131,14 @@ describe('POST /api/users/login', () => {
   });
 
   test('login exitoso devuelve 200 con token JWT', async () => {
-    mockQuery.mockResolvedValueOnce([[{
-      userId: 'uuid-1',
-      nombre: 'Ana',
-      email: 'ana@test.com',
-      password_hash: 'hashed',
-    }]]);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{
+        userId: 'uuid-1',
+        nombre: 'Ana',
+        email: 'ana@test.com',
+        password_hash: 'hashed',
+      }]
+    });
     require('bcryptjs').compare.mockResolvedValueOnce(true);
 
     const res = await request(app)
@@ -151,7 +152,7 @@ describe('POST /api/users/login', () => {
   });
 
   test('devuelve 401 si el usuario no existe', async () => {
-    mockQuery.mockResolvedValueOnce([[]]);
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await request(app)
       .post('/api/users/login')
@@ -162,7 +163,9 @@ describe('POST /api/users/login', () => {
   });
 
   test('devuelve 401 si el password es incorrecto', async () => {
-    mockQuery.mockResolvedValueOnce([[{ userId: 'uuid-1', nombre: 'Ana', email: 'ana@test.com', password_hash: 'hashed' }]]);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ userId: 'uuid-1', nombre: 'Ana', email: 'ana@test.com', password_hash: 'hashed' }]
+    });
     require('bcryptjs').compare.mockResolvedValueOnce(false);
 
     const res = await request(app)
