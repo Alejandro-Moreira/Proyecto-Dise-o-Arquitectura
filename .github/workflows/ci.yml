@@ -194,28 +194,28 @@ jobs:
       - name: Verificar health de todos los servicios
         run: |
           echo "🔍 Verificando Gateway..."
-          curl -f http://localhost:8080/health
+          curl -f http://localhost:8081/health
           echo ""
           echo "✅ Todos los servicios están saludables."
 
       - name: Smoke test E2E - Registro → Login → Documento → Estado FIRMADO
         run: |
           # 1. Registrar usuario
-          REGISTER=$(curl -sf -X POST http://localhost:8080/api/users/register \
+          REGISTER=$(curl -sf -X POST http://localhost:8081/api/users/register \
             -H "Content-Type: application/json" \
             -d '{"nombre":"CI Bot","email":"cibot@ecofirma.test","password":"ci_test_pass_123"}')
           echo "Registro: $REGISTER"
           USER_ID=$(echo $REGISTER | python3 -c "import sys,json; print(json.load(sys.stdin)['userId'])")
 
           # 2. Login
-          LOGIN=$(curl -sf -X POST http://localhost:8080/api/users/login \
+          LOGIN=$(curl -sf -X POST http://localhost:8081/api/users/login \
             -H "Content-Type: application/json" \
             -d '{"email":"cibot@ecofirma.test","password":"ci_test_pass_123"}')
           TOKEN=$(echo $LOGIN | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
           echo "JWT obtenido: ${TOKEN:0:30}..."
 
           # 3. Crear documento
-          DOC=$(curl -sf -X POST http://localhost:8080/api/documents \
+          DOC=$(curl -sf -X POST http://localhost:8081/api/documents \
             -H "Content-Type: application/json" \
             -d "{\"titulo\":\"Contrato CI\",\"contenidoBase64\":\"Q0kgVGVzdA==\",\"autorId\":\"$USER_ID\"}")
           echo "Documento creado: $DOC"
@@ -228,7 +228,7 @@ jobs:
           sleep 6
 
           # 5. Verificar estado FIRMADO
-          FINAL=$(curl -sf http://localhost:8080/api/documents/$DOC_ID)
+          FINAL=$(curl -sf http://localhost:8081/api/documents/$DOC_ID)
           ESTADO_FINAL=$(echo $FINAL | python3 -c "import sys,json; print(json.load(sys.stdin)['estado'])")
           echo "Estado final: $ESTADO_FINAL"
 
