@@ -37,14 +37,21 @@ app.use((req, res, next) => {
   const origin = req.headers.origin;
   const corsOrigin = process.env.CORS_ORIGIN || '*';
 
-  if (corsOrigin === '*') {
+  // Permitir dinámicamente orígenes del proyecto (localhost, github.io, onrender.com)
+  if (origin && (
+    origin.endsWith('github.io') ||
+    origin.endsWith('onrender.com') ||
+    origin.includes('localhost') ||
+    origin.includes('127.0.0.1')
+  )) {
+    res.header('Access-Control-Allow-Origin', origin);
+  } else if (corsOrigin === '*') {
     res.header('Access-Control-Allow-Origin', '*');
   } else if (origin) {
     const allowedOrigins = corsOrigin.split(',').map(o => o.trim());
     if (allowedOrigins.includes(origin)) {
       res.header('Access-Control-Allow-Origin', origin);
     } else {
-      // Fallback a la primera de la lista
       res.header('Access-Control-Allow-Origin', allowedOrigins[0]);
     }
   } else {
