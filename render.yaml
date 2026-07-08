@@ -27,7 +27,7 @@ services:
       - key: DOCUMENTS_SERVICE_URL
         value: http://ecofirma-documents-service:10000
       - key: CORS_ORIGIN
-        value: https://ecofirma-frontend.onrender.com
+        value: https://ecofirma-frontend.onrender.com, https://alejandro-moreira.github.io
 
   - type: pserv
     runtime: docker
