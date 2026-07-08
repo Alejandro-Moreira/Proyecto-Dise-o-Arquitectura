@@ -1,4 +1,4 @@
-﻿
+
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # EcoFirma - Docker Compose (con stack de monitoreo completo)
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -41,6 +41,8 @@ networks:
 volumes:
   postgres-data:
     name: ecofirma-postgres-data
+  mysql-data:
+    name: ecofirma-mysql-data
   prometheus-data:
     name: ecofirma-prometheus-data
   grafana-data:
@@ -87,7 +89,28 @@ services:
       retries: 10
       start_period: 20s
 
-  # â”€â”€ 2. Redis 7 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # ── 1.2 MySQL 8 ──
+  mysql:
+    image: mysql:8.0
+    container_name: ecofirma-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-ecofirma_root_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ecofirma_users_db}
+      MYSQL_USER: ${MYSQL_USER:-ecofirma_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ecofirma_secret_password}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - ecofirma-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${MYSQL_USER:-ecofirma_user}", "-p${MYSQL_PASSWORD:-ecofirma_secret_password}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ── 2. Redis 7 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: ecofirma-redis
@@ -144,6 +167,7 @@ services:
       USERS_SERVICE_URL: ${USERS_SERVICE_URL}
       DOCUMENTS_SERVICE_URL: ${DOCUMENTS_SERVICE_URL}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      JWT_SECRET: ${JWT_SECRET}
     depends_on:
       users-service:
         condition: service_healthy
@@ -167,15 +191,15 @@ services:
     restart: unless-stopped
     environment:
       USERS_SERVICE_PORT: ${USERS_SERVICE_PORT:-3001}
-      POSTGRES_HOST: ${POSTGRES_HOST}
-      POSTGRES_PORT: ${POSTGRES_PORT}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DB: ${MYSQL_DATABASE:-ecofirma_users_db}
+      MYSQL_USER: ${MYSQL_USER:-ecofirma_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ecofirma_secret_password}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
     depends_on:
-      postgres:
+      mysql:
         condition: service_healthy
     networks:
       - ecofirma-network

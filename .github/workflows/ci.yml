@@ -1,4 +1,4 @@
-name: 🔬 CI — Build, Lint & Test
+name: CI - Build, Lint & Test
 
 # ──────────────────────────────────────────────────────────────────
 # Se ejecuta en:
@@ -18,7 +18,7 @@ jobs:
 
   # ── Job 1: Lint de código (ESLint) ────────────────────────────────
   lint:
-    name: 🧹 Lint
+    name: Lint
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -44,7 +44,7 @@ jobs:
 
   # ── Job 2: Tests unitarios e integración ─────────────────────────
   test:
-    name: 🧪 Tests
+    name: Tests
     runs-on: ubuntu-latest
     needs: lint
 
@@ -138,7 +138,7 @@ jobs:
 
   # ── Job 3: Build Docker images ────────────────────────────────────
   build:
-    name: 🐳 Docker Build
+    name: Docker Build
     runs-on: ubuntu-latest
     needs: test
 

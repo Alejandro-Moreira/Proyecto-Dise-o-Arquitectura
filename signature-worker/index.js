@@ -71,9 +71,9 @@ healthApp.listen(HEALTH_PORT, () => {
  * @param {string} documentId  UUID del documento a firmar
  */
 async function simulateCryptoProcessing(documentId) {
-  console.log(`[Worker] ⏳ Iniciando procesamiento criptográfico para documentId=${documentId}...`);
+  console.log(`[Worker] Iniciando procesamiento criptográfico para documentId=${documentId}...`);
   await new Promise((resolve) => setTimeout(resolve, CRYPTO_PROCESSING_DELAY_MS));
-  console.log(`[Worker] ✅ Procesamiento criptográfico completado para documentId=${documentId}`);
+  console.log(`[Worker] Procesamiento criptográfico completado para documentId=${documentId}`);
 }
 
 /**
@@ -99,6 +99,34 @@ async function markDocumentAsSigned(documentId) {
   );
 
   console.log(`[Worker] Documents Service respondió ${response.status} para documentId=${documentId}`);
+}
+
+/**
+ * Llama al endpoint interno del Documents Service para marcar el documento como ERROR.
+ *
+ * @param {string} documentId
+ * @param {string} errorMsg
+ */
+async function markDocumentAsError(documentId, errorMsg) {
+  const url = `${DOCUMENTS_SERVICE_URL}/api/documents/${documentId}/status`;
+  console.log(`[Worker] Actualizando estado del documento ${documentId} -> ERROR via ${url}. Motivo: ${errorMsg}`);
+
+  try {
+    const response = await axios.patch(
+      url,
+      { estado: 'ERROR' },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Token': INTERNAL_TOKEN,
+        },
+        timeout: 10000,
+      }
+    );
+    console.log(`[Worker] Documents Service respondió ${response.status} (marcado como ERROR) para documentId=${documentId}`);
+  } catch (err) {
+    console.error(`[Worker] Error al marcar documento como ERROR:`, err.message);
+  }
 }
 
 /**
@@ -143,7 +171,7 @@ async function startWorker(retries = 15, delay = 5000) {
       // prefetch(1): procesa UN mensaje a la vez → evita sobrecarga y pérdida de mensajes
       await channel.prefetch(1);
 
-      console.log(`[Worker] 🚀 Conectado a RabbitMQ. Consumiendo cola: ${SIGNATURE_QUEUE}`);
+      console.log(`[Worker] Conectado a RabbitMQ. Consumiendo cola: ${SIGNATURE_QUEUE}`);
 
       channel.consume(SIGNATURE_QUEUE, async (msg) => {
         if (!msg) {
@@ -162,14 +190,16 @@ async function startWorker(retries = 15, delay = 5000) {
             throw new Error('Mensaje inválido: falta `documentId`.');
           }
 
-          console.log(`[Worker] 📨 Mensaje recibido: documentId=${documentId}`);
+          console.log(`[Worker] Mensaje recibido: documentId=${documentId}`);
 
           // Verificar si el mensaje ha sido reintentado demasiadas veces
           const deathCount = getDeathCount(msg);
           if (deathCount >= MAX_RETRIES) {
             console.error(
-              `[Worker] ❌ documentId=${documentId} superó el límite de ${MAX_RETRIES} reintentos. Enviando a DLQ.`
+              `[Worker] documentId=${documentId} superó el límite de ${MAX_RETRIES} reintentos. Enviando a DLQ.`
             );
+            // Marcar estado en BD como ERROR antes de descartar
+            await markDocumentAsError(documentId, `Superó el límite de ${MAX_RETRIES} reintentos`);
             // nack sin requeue → RabbitMQ lo enrutará al DLX automáticamente
             channel.nack(msg, false, false);
             signaturesProcessed.inc({ result: 'error' });
@@ -185,10 +215,10 @@ async function startWorker(retries = 15, delay = 5000) {
           // ack manual: confirma que el mensaje fue procesado exitosamente
           channel.ack(msg);
           signaturesProcessed.inc({ result: 'success' });
-          console.log(`[Worker] ✔ Mensaje procesado y confirmado (ack) para documentId=${documentId}`);
+          console.log(`[Worker] Mensaje procesado y confirmado (ack) para documentId=${documentId}`);
         } catch (err) {
           const context = documentId ? `documentId=${documentId}` : 'mensaje desconocido';
-          console.error(`[Worker] ❌ Error procesando ${context}:`, err.message);
+          console.error(`[Worker] Error procesando ${context}:`, err.message);
 
           if (err.response) {
             // Error HTTP del Documents Service

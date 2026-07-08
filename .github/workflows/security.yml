@@ -1,4 +1,4 @@
-name: 🔒 Security Scan
+name: Security Scan
 
 # Escaneo de vulnerabilidades en dependencias y contenedores
 on:
@@ -11,7 +11,7 @@ on:
 jobs:
   # ── Escaneo de dependencias npm ───────────────────────────────────
   audit-dependencies:
-    name: 📦 npm audit
+    name: npm audit
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -35,7 +35,7 @@ jobs:
 
   # ── Escaneo de imágenes Docker con Trivy ─────────────────────────
   trivy-scan:
-    name: 🛡️ Trivy Docker Scan
+    name: Trivy Docker Scan
     runs-on: ubuntu-latest
     permissions:
           contents: read

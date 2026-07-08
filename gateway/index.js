@@ -18,6 +18,9 @@ const express = require('express');
 const morgan = require('morgan');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const { register, metricsMiddleware } = require('./metrics');
+const jwt = require('jsonwebtoken');
+
+const JWT_SECRET = process.env.JWT_SECRET;
 
 const app = express();
 const PORT = process.env.PORT || process.env.GATEWAY_PORT || 8080;
@@ -39,6 +42,32 @@ app.use((req, res, next) => {
   }
   return next();
 });
+
+// Middleware de validación JWT para rutas protegidas
+function authenticateJWT(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader) {
+    return res.status(401).json({ error: 'Acceso denegado: Token no proporcionado.' });
+  }
+
+  const token = authHeader.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ error: 'Acceso denegado: Formato de token inválido.' });
+  }
+
+  if (!JWT_SECRET) {
+    console.error('[Gateway] JWT_SECRET no está configurado.');
+    return res.status(500).json({ error: 'Error de configuración del servidor.' });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(401).json({ error: 'Acceso denegado: Token inválido o expirado.' });
+    }
+    req.user = decoded;
+    next();
+  });
+}
 
 // ─── Health-check y métricas ──────────────────────────────────────────────────
 
@@ -94,8 +123,8 @@ function buildProxyOptions(target, name) {
 // ─── Proxy routes ─────────────────────────────────────────────────────────────
 
 app.use('/api/users', createProxyMiddleware(buildProxyOptions(USERS_SERVICE_URL, 'users-service')));
-app.use('/api/signatures', createProxyMiddleware(buildProxyOptions(DOCUMENTS_SERVICE_URL, 'documents-service')));
-app.use('/api/documents', createProxyMiddleware(buildProxyOptions(DOCUMENTS_SERVICE_URL, 'documents-service')));
+app.use('/api/signatures', authenticateJWT, createProxyMiddleware(buildProxyOptions(DOCUMENTS_SERVICE_URL, 'documents-service')));
+app.use('/api/documents', authenticateJWT, createProxyMiddleware(buildProxyOptions(DOCUMENTS_SERVICE_URL, 'documents-service')));
 
 // ─── Ruta no encontrada ───────────────────────────────────────────────────────
 
