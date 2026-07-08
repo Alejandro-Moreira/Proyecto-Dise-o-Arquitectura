@@ -2,6 +2,8 @@
 
 Plataforma distribuida para gestión documental y firma digital asíncrona.
 
+## Autores: Andrew Vilcacundo y Alejandro Moreira
+
 ## Arquitectura
 
 El ecosistema incluye:
