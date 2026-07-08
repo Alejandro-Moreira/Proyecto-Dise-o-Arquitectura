@@ -217,6 +217,7 @@ jobs:
           # 3. Crear documento
           DOC=$(curl -sf -X POST http://localhost:8081/api/documents \
             -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $TOKEN" \
             -d "{\"titulo\":\"Contrato CI\",\"contenidoBase64\":\"Q0kgVGVzdA==\",\"autorId\":\"$USER_ID\"}")
           echo "Documento creado: $DOC"
           DOC_ID=$(echo $DOC | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
@@ -228,7 +229,7 @@ jobs:
           sleep 6
 
           # 5. Verificar estado FIRMADO
-          FINAL=$(curl -sf http://localhost:8081/api/documents/$DOC_ID)
+          FINAL=$(curl -sf -H "Authorization: Bearer $TOKEN" http://localhost:8081/api/documents/$DOC_ID)
           ESTADO_FINAL=$(echo $FINAL | python3 -c "import sys,json; print(json.load(sys.stdin)['estado'])")
           echo "Estado final: $ESTADO_FINAL"
 
