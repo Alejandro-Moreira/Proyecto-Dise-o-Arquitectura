@@ -28,6 +28,11 @@ services:
         value: https://ecofirma-documents-service.onrender.com
       - key: CORS_ORIGIN
         value: https://ecofirma-frontend.onrender.com, https://alejandro-moreira.github.io
+      - key: JWT_SECRET
+        fromService:
+          type: web
+          name: ecofirma-users-service
+          envVarKey: JWT_SECRET
 
   - type: web
     runtime: docker
@@ -50,6 +55,7 @@ services:
         value: 2h
       - key: NODE_ENV
         value: production
+
 
   - type: web
     runtime: docker

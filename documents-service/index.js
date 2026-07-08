@@ -71,7 +71,7 @@ const redis = new Redis({
 redis.on('connect', () => console.log('[Documents] Conectado a Redis.'));
 redis.on('error', (err) => console.error('[Documents] Error de Redis:', err.message));
 
-// ─── Conexión a RabbitMQ ──────────────────────────────────────────────────────
+// ─── Conexión a RabbitMQ (opcional) ─────────────────────────────────────────
 
 /**
  * Mantiene una referencia al canal de RabbitMQ para reutilizarlo.
@@ -79,7 +79,16 @@ redis.on('error', (err) => console.error('[Documents] Error de Redis:', err.mess
  */
 let rabbitChannel = null;
 
-async function connectRabbitMQ(retries = 12, delay = 5000) {
+// Si RABBITMQ_HOST no está explícitamente configurado, el servicio arranca
+// sin RabbitMQ y las firmas quedan en modo "sin cola" (sin worker automático).
+const RABBITMQ_ENABLED = process.env.RABBITMQ_HOST && process.env.RABBITMQ_HOST !== 'rabbitmq';
+
+async function connectRabbitMQ(retries = 3, delay = 3000) {
+  if (!RABBITMQ_ENABLED) {
+    console.log('[Documents] RABBITMQ_HOST no configurado. Arrancando sin cola de mensajes (modo sin worker).');
+    return;
+  }
+
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const connection = await amqp.connect(RABBITMQ_URL);
@@ -578,9 +587,12 @@ app.patch('/api/documents/:id/status', async (req, res) => {
 
 async function start() {
   await initDB();
-  await connectRabbitMQ();
   app.listen(PORT, () => {
     console.log(`[Documents] EcoFirma Documents Service escuchando en http://0.0.0.0:${PORT}`);
+  });
+  // RabbitMQ se conecta en background, sin bloquear el arranque del servidor
+  connectRabbitMQ().catch((err) => {
+    console.warn('[Documents] Error en conexión background a RabbitMQ:', err.message);
   });
 }
 
