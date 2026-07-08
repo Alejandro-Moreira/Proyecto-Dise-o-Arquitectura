@@ -191,15 +191,15 @@ services:
     restart: unless-stopped
     environment:
       USERS_SERVICE_PORT: ${USERS_SERVICE_PORT:-3001}
-      MYSQL_HOST: mysql
-      MYSQL_PORT: 3306
-      MYSQL_DB: ${MYSQL_DATABASE:-ecofirma_users_db}
-      MYSQL_USER: ${MYSQL_USER:-ecofirma_user}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ecofirma_secret_password}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
     networks:
       - ecofirma-network
