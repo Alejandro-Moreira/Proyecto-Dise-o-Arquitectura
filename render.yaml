@@ -16,56 +16,48 @@ services:
   - type: web
     runtime: docker
     name: ecofirma-gateway
-    plan: starter
+    plan: free
     dockerContext: ./gateway
     dockerfilePath: ./gateway/Dockerfile
     healthCheckPath: /health
     autoDeployTrigger: commit
     envVars:
       - key: USERS_SERVICE_URL
-        value: http://ecofirma-users-service:10000
+        value: https://ecofirma-users-service.onrender.com
       - key: DOCUMENTS_SERVICE_URL
-        value: http://ecofirma-documents-service:10000
+        value: https://ecofirma-documents-service.onrender.com
       - key: CORS_ORIGIN
         value: https://ecofirma-frontend.onrender.com, https://alejandro-moreira.github.io
 
-  - type: pserv
+  - type: web
     runtime: docker
     name: ecofirma-users-service
-    plan: starter
+    plan: free
     dockerContext: ./users-service
     dockerfilePath: ./users-service/Dockerfile
+    healthCheckPath: /health
     autoDeployTrigger: commit
     envVars:
       - key: PORT
         value: 10000
-      - key: MYSQL_HOST
-        fromService:
-          type: pserv
-          name: ecofirma-mysql
-          property: host
-      - key: MYSQL_PORT
-        value: 3306
-      - key: MYSQL_DB
-        value: ecofirma_users_db
-      - key: MYSQL_USER
-        value: ecofirma_user
-      - key: MYSQL_PASSWORD
-        fromService:
-          type: pserv
-          name: ecofirma-mysql
-          envVarKey: MYSQL_PASSWORD
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ecofirma-postgres
+          property: connectionString
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 2h
+      - key: NODE_ENV
+        value: production
 
-  - type: pserv
+  - type: web
     runtime: docker
     name: ecofirma-documents-service
-    plan: starter
+    plan: free
     dockerContext: ./documents-service
     dockerfilePath: ./documents-service/Dockerfile
+    healthCheckPath: /health
     autoDeployTrigger: commit
     envVars:
       - key: PORT
@@ -86,85 +78,7 @@ services:
           property: port
       - key: REDIS_TTL
         value: 300
-      - key: RABBITMQ_HOST
-        fromService:
-          type: pserv
-          name: ecofirma-rabbitmq
-          property: host
-      - key: RABBITMQ_PORT
-        value: 5672
-      - key: RABBITMQ_USER
-        value: ecofirma
-      - key: RABBITMQ_PASSWORD
-        fromService:
-          type: pserv
-          name: ecofirma-rabbitmq
-          envVarKey: RABBITMQ_DEFAULT_PASS
       - key: INTERNAL_TOKEN
-        generateValue: true
-
-  - type: worker
-    runtime: docker
-    name: ecofirma-signature-worker
-    plan: starter
-    dockerContext: ./signature-worker
-    dockerfilePath: ./signature-worker/Dockerfile
-    autoDeployTrigger: commit
-    envVars:
-      - key: DOCUMENTS_SERVICE_URL
-        value: http://ecofirma-documents-service:10000
-      - key: RABBITMQ_HOST
-        fromService:
-          type: pserv
-          name: ecofirma-rabbitmq
-          property: host
-      - key: RABBITMQ_PORT
-        value: 5672
-      - key: RABBITMQ_USER
-        value: ecofirma
-      - key: RABBITMQ_PASSWORD
-        fromService:
-          type: pserv
-          name: ecofirma-rabbitmq
-          envVarKey: RABBITMQ_DEFAULT_PASS
-      - key: INTERNAL_TOKEN
-        fromService:
-          type: pserv
-          name: ecofirma-documents-service
-          envVarKey: INTERNAL_TOKEN
-
-  - type: pserv
-    runtime: docker
-    name: ecofirma-rabbitmq
-    plan: starter
-    dockerContext: .
-    dockerfilePath: ./rabbitmq/Dockerfile
-    autoDeployTrigger: commit
-    envVars:
-      - key: PORT
-        value: 5672
-      - key: RABBITMQ_DEFAULT_USER
-        value: ecofirma
-      - key: RABBITMQ_DEFAULT_PASS
-        generateValue: true
-
-  - type: pserv
-    runtime: docker
-    name: ecofirma-mysql
-    plan: starter
-    dockerContext: ./mysql
-    dockerfilePath: ./mysql/Dockerfile
-    autoDeployTrigger: commit
-    envVars:
-      - key: PORT
-        value: 3306
-      - key: MYSQL_ROOT_PASSWORD
-        generateValue: true
-      - key: MYSQL_DATABASE
-        value: ecofirma_users_db
-      - key: MYSQL_USER
-        value: ecofirma_user
-      - key: MYSQL_PASSWORD
         generateValue: true
 
   - type: keyvalue

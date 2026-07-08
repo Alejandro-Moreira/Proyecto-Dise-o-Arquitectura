@@ -7,12 +7,14 @@
  *   - POST /api/users/register  → Registra un nuevo usuario (bcrypt hash)
  *   - POST /api/users/login     → Autentica y devuelve JWT
  *
- * Base de datos: MySQL (tabla `users`)
+ * Base de datos: PostgreSQL (tabla `users`)
  * Columnas: id (VARCHAR(36)), nombre, email (UNIQUE), password_hash, created_at
+ *
+ * Nota: Migrado de MySQL a PostgreSQL para compatibilidad con el plan gratuito de Render.
  */
 
 const express = require('express');
-const mysql = require('mysql2/promise');
+const { Pool } = require('pg');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -30,45 +32,48 @@ if (!JWT_SECRET) {
   process.exit(1);
 }
 
-// ─── Conexión a MySQL ─────────────────────────────────────────────────────────
+// ─── Conexión a PostgreSQL ─────────────────────────────────────────────────────
 
-const pool = process.env.DATABASE_URL
-  ? mysql.createPool(process.env.DATABASE_URL)
-  : mysql.createPool({
-      host: process.env.MYSQL_HOST || 'mysql',
-      port: Number(process.env.MYSQL_PORT) || 3306,
-      database: process.env.MYSQL_DB || 'ecofirma_users_db',
-      user: process.env.MYSQL_USER || 'ecofirma_user',
-      password: process.env.MYSQL_PASSWORD,
-      waitForConnections: true,
-      connectionLimit: 10,
-      queueLimit: 0,
-      connectTimeout: 5000,
-    });
+const pool = new Pool(
+  process.env.DATABASE_URL
+    ? {
+        connectionString: process.env.DATABASE_URL,
+        connectionTimeoutMillis: 5000,
+        ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      }
+    : {
+        host: process.env.POSTGRES_HOST || 'postgres',
+        port: Number(process.env.POSTGRES_PORT) || 5432,
+        database: process.env.POSTGRES_DB || 'ecofirma_users_db',
+        user: process.env.POSTGRES_USER || 'ecofirma_user',
+        password: process.env.POSTGRES_PASSWORD,
+        connectionTimeoutMillis: 5000,
+      }
+);
 
 // ─── Inicialización de tabla ──────────────────────────────────────────────────
 
 /**
  * Crea la tabla `users` si no existe.
  * Se usa un esquema de reintentos con backoff exponencial para aguardar
- * a que MySQL esté listo.
+ * a que PostgreSQL esté listo.
  */
 async function initDB(retries = 10, delay = 3000) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS users (
-          id            VARCHAR(36) PRIMARY KEY,
+          id            VARCHAR(36)  PRIMARY KEY,
           nombre        VARCHAR(255) NOT NULL,
           email         VARCHAR(255) NOT NULL UNIQUE,
           password_hash VARCHAR(255) NOT NULL,
-          created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+          created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
         );
       `);
-      console.log('[Users] Tabla `users` lista en MySQL.');
+      console.log('[Users] Tabla `users` lista en PostgreSQL.');
       return;
     } catch (err) {
-      console.warn(`[Users] Intento ${attempt}/${retries} de conexión a MySQL falló: ${err.message}`);
+      console.warn(`[Users] Intento ${attempt}/${retries} de conexión a PostgreSQL falló: ${err.message}`);
       if (attempt === retries) {
         throw err;
       }
@@ -124,7 +129,7 @@ app.post('/api/users/register', async (req, res) => {
     const userId = crypto.randomUUID();
     await pool.query(
       `INSERT INTO users (id, nombre, email, password_hash)
-       VALUES (?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4)`,
       [userId, nombre.trim(), email.toLowerCase().trim(), password_hash]
     );
 
@@ -133,8 +138,8 @@ app.post('/api/users/register', async (req, res) => {
 
     return res.status(201).json(user);
   } catch (err) {
-    // ER_DUP_ENTRY = violación de clave única en MySQL (email duplicado)
-    if (err.code === 'ER_DUP_ENTRY' || err.errno === 1062) {
+    // 23505 = violación de clave única en PostgreSQL (email duplicado)
+    if (err.code === '23505') {
       return res.status(409).json({ error: 'El email ya está registrado. Utiliza otro correo electrónico.' });
     }
     console.error('[Users] Error en /register:', err.message);
@@ -152,19 +157,19 @@ app.post('/api/users/login', async (req, res) => {
   }
 
   try {
-    const [rows] = await pool.query(
+    const result = await pool.query(
       `SELECT id AS "userId", nombre, email, password_hash
        FROM users
-       WHERE email = ?`,
+       WHERE email = $1`,
       [email.toLowerCase().trim()]
     );
 
-    if (rows.length === 0) {
+    if (result.rows.length === 0) {
       // No revelar si el email existe o no (seguridad)
       return res.status(401).json({ error: 'Credenciales inválidas.' });
     }
 
-    const user = rows[0];
+    const user = result.rows[0];
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
 
     if (!passwordMatch) {
