@@ -122,8 +122,7 @@ function buildProxyOptions(target, name) {
   return {
     target,
     changeOrigin: true,
-    // No pathRewrite: las rutas completas (/api/users/..., /api/documents/...)
-    // se reenvían tal cual al servicio destino, que las maneja directamente.
+    pathRewrite: (_path, req) => req.originalUrl,
     on: {
       error: (err, req, res) => {
         console.error(`[Gateway] Error al conectar con ${name}: ${err.message}`);
