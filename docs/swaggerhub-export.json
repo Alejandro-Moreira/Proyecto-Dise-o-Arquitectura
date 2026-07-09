@@ -1,0 +1,325 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "EcoFirma API Gateway",
+    "description": "API Gateway for EcoFirma platform managing Users, Documents, and Signature services",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080"
+    }
+  ],
+  "paths": {
+    "/api/users/register": {
+      "post": {
+        "tags": [
+          "Users Service"
+        ],
+        "summary": "Register a new user",
+        "description": "Endpoint to register a new user with name, email, and password",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserRegisterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User registered successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/login": {
+      "post": {
+        "tags": [
+          "Users Service"
+        ],
+        "summary": "User login",
+        "description": "Authenticate user and return a JWT token",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserLoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful login with JWT token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": {
+                      "type": "string",
+                      "description": "JWT token for authenticated user"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents": {
+      "get": {
+        "tags": [
+          "Documents Service"
+        ],
+        "summary": "List all documents",
+        "description": "Retrieve a list of all documents in the system",
+        "responses": {
+          "200": {
+            "description": "A list of documents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Documents Service"
+        ],
+        "summary": "Create a new document",
+        "description": "Create a document with title, base64 content, and author ID",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Document created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{id}": {
+      "get": {
+        "tags": [
+          "Documents Service"
+        ],
+        "summary": "Get document by ID",
+        "description": "Retrieve a single document by its unique ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Unique identifier of the document",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Document details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/signatures/process": {
+      "post": {
+        "tags": [
+          "Signature Service"
+        ],
+        "summary": "Process a document signature asynchronously",
+        "description": "Initiate asynchronous processing of a document signature by document ID",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignatureProcessRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Signature processing started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Signature processing initiated"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "UserRegisterRequest": {
+        "type": "object",
+        "required": [
+          "nombre",
+          "email",
+          "password"
+        ],
+        "properties": {
+          "nombre": {
+            "type": "string",
+            "description": "Full name of the user"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "User's email address"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "description": "User's password"
+          }
+        }
+      },
+      "UserLoginRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "User's email address"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "description": "User's password"
+          }
+        }
+      },
+      "UserResponse": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "Unique identifier of the user"
+          },
+          "nombre": {
+            "type": "string",
+            "description": "Full name of the user"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "User's email address"
+          }
+        }
+      },
+      "DocumentCreateRequest": {
+        "type": "object",
+        "required": [
+          "titulo",
+          "contenidoBase64",
+          "autorId"
+        ],
+        "properties": {
+          "titulo": {
+            "type": "string",
+            "description": "Title of the document"
+          },
+          "contenidoBase64": {
+            "type": "string",
+            "description": "Document content encoded in Base64"
+          },
+          "autorId": {
+            "type": "string",
+            "description": "Identifier of the author user"
+          }
+        }
+      },
+      "DocumentResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier of the document"
+          },
+          "titulo": {
+            "type": "string",
+            "description": "Title of the document"
+          },
+          "contenidoBase64": {
+            "type": "string",
+            "description": "Document content encoded in Base64"
+          },
+          "autorId": {
+            "type": "string",
+            "description": "Identifier of the author user"
+          }
+        }
+      },
+      "SignatureProcessRequest": {
+        "type": "object",
+        "required": [
+          "documentId"
+        ],
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "description": "Unique identifier of the document to be signed asynchronously"
+          }
+        }
+      }
+    }
+  }
+}

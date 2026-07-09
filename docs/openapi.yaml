@@ -79,6 +79,21 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/DocumentCreateRequest'
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, autorId]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Document file (.pdf or .docx) to upload, max 40MB
+                autorId:
+                  type: string
+                  description: Identifier of the author user
+                titulo:
+                  type: string
+                  description: Optional title of the document (defaults to filename if omitted)
       responses:
         '201':
           description: Document created
@@ -88,6 +103,8 @@ paths:
                 $ref: '#/components/schemas/DocumentResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '413':
+          description: Payload Too Large (file exceeds 40MB)
   /api/documents/{id}:
     get:
       tags: [Documents Service]
@@ -293,6 +310,18 @@ components:
           $ref: '#/components/schemas/DocumentStatus'
         status:
           $ref: '#/components/schemas/DocumentStatus'
+        archivoNombre:
+          type: string
+          nullable: true
+          description: Original filename of the uploaded file
+        archivoTamano:
+          type: integer
+          nullable: true
+          description: File size in bytes
+        archivoTipo:
+          type: string
+          nullable: true
+          description: MimeType of the uploaded file
     DocumentStatus:
       type: string
       enum: [PENDIENTE, EN_PROCESO, FIRMADO, ERROR]

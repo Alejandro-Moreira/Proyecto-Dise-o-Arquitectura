@@ -19,6 +19,8 @@ const morgan = require('morgan');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const { register, metricsMiddleware } = require('./metrics');
 const jwt = require('jsonwebtoken');
+const path = require('path');
+const fs = require('fs');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -169,6 +171,67 @@ function buildProxyOptions(target, name) {
     },
   };
 }
+
+// ─── Documentación Swagger ────────────────────────────────────────────────────
+
+const openApiSpecPath = path.join(__dirname, '..', 'docs', 'openapi.json');
+
+app.get('/api/docs/swagger.json', (req, res) => {
+  if (fs.existsSync(openApiSpecPath)) {
+    try {
+      const jsonContent = JSON.parse(fs.readFileSync(openApiSpecPath, 'utf8'));
+      const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+      const host = req.get('host');
+      jsonContent.servers = [{ url: `${protocol}://${host}` }];
+      res.json(jsonContent);
+    } catch (err) {
+      res.status(500).json({ error: 'Error parsing OpenAPI spec' });
+    }
+  } else {
+    res.status(404).json({ error: 'OpenAPI spec file not found' });
+  }
+});
+
+app.get('/api/docs', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <title>EcoFirma API Documentation</title>
+      <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css" >
+      <style>
+        html { box-sizing: border-box; overflow: -y-scroll; }
+        *, *:before, *:after { box-sizing: inherit; }
+        body { margin:0; background: #fafafa; }
+      </style>
+    </head>
+    <body>
+      <div id="swagger-ui"></div>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.min.js"> </script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.min.js"> </script>
+      <script>
+        window.onload = function() {
+          const ui = SwaggerUIBundle({
+            url: "/api/docs/swagger.json",
+            dom_id: '#swagger-ui',
+            deepLinking: true,
+            presets: [
+              SwaggerUIBundle.presets.apis,
+              SwaggerUIStandalonePreset
+            ],
+            plugins: [
+              SwaggerUIBundle.plugins.DownloadUrl
+            ],
+            layout: "StandaloneLayout"
+          });
+          window.ui = ui;
+        };
+      </script>
+    </body>
+    </html>
+  `);
+});
 
 // ─── Proxy routes ─────────────────────────────────────────────────────────────
 
