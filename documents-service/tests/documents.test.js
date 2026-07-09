@@ -72,6 +72,7 @@ beforeAll(async () => {
   jest.resetModules();
   process.env.POSTGRES_PASSWORD = 'test_password';
   process.env.INTERNAL_TOKEN = 'test_internal_token';
+  process.env.RABBITMQ_HOST = 'mock-host';
   app = require('../index');
   await new Promise((r) => setTimeout(r, 200));
 });

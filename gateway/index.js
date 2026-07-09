@@ -157,12 +157,14 @@ app.use((_req, res) => {
 
 // ─── Arranque ─────────────────────────────────────────────────────────────────
 
-app.listen(PORT, () => {
-  console.log(`[Gateway] EcoFirma API Gateway escuchando en http://0.0.0.0:${PORT}`);
-  console.log(`[Gateway] → /api/users/*      → ${USERS_SERVICE_URL}`);
-  console.log(`[Gateway] → /api/documents/*  → ${DOCUMENTS_SERVICE_URL}`);
-  console.log(`[Gateway] → /api/signatures/* → ${DOCUMENTS_SERVICE_URL}`);
-  console.log(`[Gateway] → /metrics          → Prometheus metrics`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`[Gateway] EcoFirma API Gateway escuchando en http://0.0.0.0:${PORT}`);
+    console.log(`[Gateway] → /api/users/*      → ${USERS_SERVICE_URL}`);
+    console.log(`[Gateway] → /api/documents/*  → ${DOCUMENTS_SERVICE_URL}`);
+    console.log(`[Gateway] → /api/signatures/* → ${DOCUMENTS_SERVICE_URL}`);
+    console.log(`[Gateway] → /metrics          → Prometheus metrics`);
+  });
+}
 
 module.exports = app;

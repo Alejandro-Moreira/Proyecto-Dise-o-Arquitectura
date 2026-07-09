@@ -58,9 +58,11 @@ healthApp.get('/metrics', async (_req, res) => {
     res.status(500).end(err.message);
   }
 });
-healthApp.listen(HEALTH_PORT, () => {
-  console.log(`[Worker] Servidor de healthcheck escuchando en http://0.0.0.0:${HEALTH_PORT}`);
-});
+if (require.main === module) {
+  healthApp.listen(HEALTH_PORT, () => {
+    console.log(`[Worker] Servidor de healthcheck escuchando en http://0.0.0.0:${HEALTH_PORT}`);
+  });
+}
 
 // ─── Procesamiento de un mensaje ──────────────────────────────────────────────
 
@@ -271,4 +273,8 @@ process.on('SIGINT', () => {
 
 // ─── Arranque ─────────────────────────────────────────────────────────────────
 
-startWorker();
+if (require.main === module) {
+  startWorker();
+}
+
+module.exports = { healthApp, getDeathCount };
