@@ -503,6 +503,9 @@ app.put('/api/documents/:id', async (req, res) => {
     }
 
     const previous = current.rows[0];
+    if (previous.estado === 'FIRMADO' || previous.estado === 'EN_PROCESO') {
+      return res.status(400).json({ error: 'No se puede modificar un documento en proceso de firma o ya firmado.' });
+    }
     const result = await pool.query(
       `UPDATE documents
        SET titulo = $1,
@@ -539,11 +542,18 @@ app.delete('/api/documents/:id', async (req, res) => {
   const { id } = req.params;
 
   try {
-    const result = await pool.query('DELETE FROM documents WHERE id = $1 RETURNING id', [id]);
+    const current = await pool.query('SELECT estado FROM documents WHERE id = $1', [id]);
 
-    if (result.rows.length === 0) {
+    if (current.rows.length === 0) {
       return res.status(404).json({ error: `Documento con id "${id}" no encontrado.` });
     }
+
+    const previous = current.rows[0];
+    if (previous.estado === 'FIRMADO' || previous.estado === 'EN_PROCESO') {
+      return res.status(400).json({ error: 'No se puede eliminar un documento en proceso de firma o ya firmado.' });
+    }
+
+    await pool.query('DELETE FROM documents WHERE id = $1', [id]);
 
     try {
       await redis.del(cacheKeyById(id));

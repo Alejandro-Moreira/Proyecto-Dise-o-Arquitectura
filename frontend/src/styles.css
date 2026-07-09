@@ -190,3 +190,45 @@ textarea {
     width: 100%;
   }
 }
+
+/* Estilos para Modal y Botones Adicionales */
+.secondary {
+  background: #64748b;
+}
+.secondary:hover {
+  background: #475569;
+}
+.danger {
+  background: #ef4444;
+}
+.danger:hover {
+  background: #dc2626;
+}
+
+.button-group {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.modal-overlay {
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.modal-content {
+  max-width: 480px;
+  width: 100%;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+}

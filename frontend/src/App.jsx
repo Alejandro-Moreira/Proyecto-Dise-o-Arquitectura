@@ -23,6 +23,8 @@ function App() {
     contenido: '',
   });
   const [selectedFile, setSelectedFile] = useState(null);
+  const [editingDoc, setEditingDoc] = useState(null);
+  const [editingFile, setEditingFile] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [selectedStatus, setSelectedStatus] = useState(null);
   const [message, setMessage] = useState('');
@@ -166,6 +168,66 @@ function App() {
     }
   }
 
+  async function deleteDocument(documentId) {
+    if (!window.confirm('¿Estás seguro de que deseas eliminar este documento? Esta acción no se puede deshacer.')) {
+      return;
+    }
+    setMessage('');
+    try {
+      await request(`/api/documents/${documentId}`, {
+        method: 'DELETE',
+      });
+      setMessage('Documento eliminado con éxito.');
+      await loadDocuments();
+    } catch (error) {
+      setMessage(`Error al eliminar: ${error.message}`);
+    }
+  }
+
+  async function updateDocument(event) {
+    event.preventDefault();
+    if (!editingDoc) return;
+    setMessage('');
+
+    try {
+      let contenidoBase64 = undefined;
+      if (editingFile) {
+        contenidoBase64 = await fileToBase64(editingFile);
+      }
+
+      const body = {
+        titulo: editingDoc.titulo,
+      };
+      if (contenidoBase64 !== undefined) {
+        body.contenidoBase64 = contenidoBase64;
+      }
+
+      await request(`/api/documents/${editingDoc.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      });
+
+      setMessage('Documento actualizado con éxito.');
+      setEditingDoc(null);
+      setEditingFile(null);
+      await loadDocuments();
+    } catch (error) {
+      setMessage(`Error al actualizar: ${error.message}`);
+    }
+  }
+
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const base64 = reader.result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = error => reject(error);
+    });
+  }
+
   function logout() {
     setToken('');
     setUser(null);
@@ -245,8 +307,10 @@ function App() {
                     <span>{doc.id}</span>
                   </div>
                   <span className={`badge ${doc.status || doc.estado}`}>{doc.status || doc.estado}</span>
-                  <button type="button" onClick={() => requestSignature(doc.id)}>Firmar</button>
+                  <button type="button" onClick={() => requestSignature(doc.id)} disabled={(doc.status || doc.estado) === 'FIRMADO' || (doc.status || doc.estado) === 'EN_PROCESO'}>Firmar</button>
                   <button type="button" onClick={() => getStatus(doc.id)}>Estado</button>
+                  <button type="button" className="secondary" onClick={() => setEditingDoc(doc)} disabled={(doc.status || doc.estado) === 'FIRMADO' || (doc.status || doc.estado) === 'EN_PROCESO'}>Actualizar</button>
+                  <button type="button" className="danger" onClick={() => deleteDocument(doc.id)} disabled={(doc.status || doc.estado) === 'FIRMADO' || (doc.status || doc.estado) === 'EN_PROCESO'}>Eliminar</button>
                 </article>
               ))}
               {documents.length === 0 && <p className="empty">No hay documentos todavía.</p>}
@@ -262,6 +326,28 @@ function App() {
       )}
 
       {message && <section className="panel compact">{message}</section>}
+
+      {editingDoc && (
+        <div className="modal-overlay">
+          <section className="panel modal-content">
+            <h2>Actualizar Documento</h2>
+            <form onSubmit={updateDocument} className="grid-form">
+              <label>
+                Título
+                <input value={editingDoc.titulo} onChange={(event) => setEditingDoc({ ...editingDoc, titulo: event.target.value })} required />
+              </label>
+              <label>
+                Reemplazar Archivo (Opcional, .pdf, .docx)
+                <input id="edit-file-input" type="file" accept=".pdf,.docx" onChange={(event) => setEditingFile(event.target.files[0] || null)} />
+              </label>
+              <div className="button-group">
+                <button type="submit">Guardar Cambios</button>
+                <button type="button" className="secondary" onClick={() => { setEditingDoc(null); setEditingFile(null); }}>Cancelar</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </main>
   );
 }

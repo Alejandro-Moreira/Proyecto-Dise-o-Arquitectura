@@ -226,6 +226,17 @@ describe('PUT /api/documents/:id', () => {
 
     expect(res.status).toBe(404);
   });
+
+  test('devuelve 400 al actualizar un documento firmado', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ ...SAMPLE_DOC_ROW, estado: 'FIRMADO' }] });
+
+    const res = await request(app)
+      .put('/api/documents/doc-uuid-123')
+      .send({ titulo: 'Intento de cambio' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/no se puede modificar/i);
+  });
 });
 
 describe('DELETE /api/documents/:id', () => {
@@ -244,6 +255,15 @@ describe('DELETE /api/documents/:id', () => {
     const res = await request(app).delete('/api/documents/no-existe');
 
     expect(res.status).toBe(404);
+  });
+
+  test('devuelve 400 al eliminar un documento firmado', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'doc-uuid-123', estado: 'FIRMADO' }] });
+
+    const res = await request(app).delete('/api/documents/doc-uuid-123');
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/no se puede eliminar/i);
   });
 });
 
