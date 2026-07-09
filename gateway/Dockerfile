@@ -9,8 +9,8 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev
 
-# Copiar código fuente
-COPY index.js metrics.js ./
+# Copiar código fuente y especificación OpenAPI
+COPY index.js metrics.js openapi.json ./
 
 # Usuario no-root por seguridad
 USER node

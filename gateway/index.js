@@ -174,7 +174,7 @@ function buildProxyOptions(target, name) {
 
 // ─── Documentación Swagger ────────────────────────────────────────────────────
 
-const openApiSpecPath = path.join(__dirname, '..', 'docs', 'openapi.json');
+const openApiSpecPath = path.join(__dirname, 'openapi.json');
 
 app.get('/api/docs/swagger.json', (req, res) => {
   if (fs.existsSync(openApiSpecPath)) {
