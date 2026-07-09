@@ -139,6 +139,33 @@ function buildProxyOptions(target, name) {
           proxyReq.setHeader('Authorization', auth);
         }
       },
+      proxyRes: (proxyRes, req, res) => {
+        const origin = req.headers.origin;
+        const corsOrigin = process.env.CORS_ORIGIN || '*';
+
+        if (origin && (
+          origin.endsWith('github.io') ||
+          origin.endsWith('onrender.com') ||
+          origin.includes('localhost') ||
+          origin.includes('127.0.0.1')
+        )) {
+          res.setHeader('Access-Control-Allow-Origin', origin);
+        } else if (corsOrigin === '*') {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+        } else if (origin) {
+          const allowedOrigins = corsOrigin.split(',').map(o => o.trim());
+          if (allowedOrigins.includes(origin)) {
+            res.setHeader('Access-Control-Allow-Origin', origin);
+          } else {
+            res.setHeader('Access-Control-Allow-Origin', allowedOrigins[0]);
+          }
+        } else {
+          res.setHeader('Access-Control-Allow-Origin', corsOrigin.split(',')[0].trim());
+        }
+
+        res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Internal-Token');
+      },
     },
   };
 }
