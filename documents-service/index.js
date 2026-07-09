@@ -26,6 +26,7 @@ const { Pool } = require('pg');
 const Redis = require('ioredis');
 const amqp = require('amqplib');
 const morgan = require('morgan');
+const multer = require('multer');
 const { register, metricsMiddleware } = require('./metrics');
 
 const app = express();
@@ -163,6 +164,12 @@ async function initDB(retries = 10, delay = 3000) {
         ADD CONSTRAINT documents_estado_check
         CHECK (estado IN ('PENDIENTE', 'EN_PROCESO', 'FIRMADO', 'ERROR'));
       `);
+      // Añadir columnas para metadatos de archivos subidos
+      await pool.query(`
+        ALTER TABLE documents ADD COLUMN IF NOT EXISTS archivo_nombre VARCHAR(255);
+        ALTER TABLE documents ADD COLUMN IF NOT EXISTS archivo_tamano BIGINT;
+        ALTER TABLE documents ADD COLUMN IF NOT EXISTS archivo_tipo VARCHAR(100);
+      `);
       console.log('[Documents] Tabla `documents` lista.');
       return;
     } catch (err) {
@@ -176,6 +183,43 @@ async function initDB(retries = 10, delay = 3000) {
 }
 
 // ─── Middlewares ──────────────────────────────────────────────────────────────
+
+// Configuración de Multer para carga de archivos en memoria con límite de 40MB
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 40 * 1024 * 1024 } // 40 MB
+});
+
+/**
+ * Valida la extensión y los primeros 4 bytes (magic numbers) de un buffer
+ * para asegurar que sea realmente un PDF o un DOCX (archivo ZIP).
+ */
+function isValidFileType(buffer, mimeType, filename) {
+  if (!filename || typeof filename !== 'string') return false;
+  const ext = filename.split('.').pop().toLowerCase();
+  if (ext !== 'pdf' && ext !== 'docx') {
+    return false;
+  }
+
+  if (!buffer || buffer.length < 4) return false;
+  const hex = buffer.toString('hex', 0, 4).toUpperCase();
+
+  const isPDF = hex === '25504446'; // %PDF
+  const isZIP = hex === '504B0304'; // PK.. (DOCX is a zip container)
+
+  if (ext === 'pdf' && isPDF && mimeType === 'application/pdf') {
+    return true;
+  }
+  if (ext === 'docx' && isZIP && (
+    mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    mimeType === 'application/octet-stream' ||
+    mimeType === 'application/zip'
+  )) {
+    return true;
+  }
+
+  return false;
+}
 
 app.use(express.json({ limit: '10mb' })); // contenidoBase64 puede ser grande
 app.use(morgan('combined'));
@@ -227,12 +271,55 @@ function rowToDocumentResponse(row) {
     autorId: row.autor_id,
     estado: row.estado,
     status: row.estado,
+    archivoNombre: row.archivo_nombre || null,
+    archivoTamano: row.archivo_tamano ? Number(row.archivo_tamano) : null,
+    archivoTipo: row.archivo_tipo || null,
   };
 }
 
 // ─── POST /api/documents ──────────────────────────────────────────────────────
 
-app.post('/api/documents', async (req, res) => {
+app.post('/api/documents', (req, res) => {
+  const contentType = req.headers['content-type'] || '';
+  if (contentType.includes('multipart/form-data')) {
+    upload.single('file')(req, res, async (err) => {
+      if (err) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(413).json({ error: 'El archivo excede el tamaño máximo permitido de 40MB.' });
+        }
+        return res.status(400).json({ error: `Error en la subida: ${err.message}` });
+      }
+      return handleFileUpload(req, res);
+    });
+  } else {
+    return handleJsonCreate(req, res);
+  }
+});
+
+async function afterDocumentCreated(doc, res) {
+  try {
+    await redis.setex(cacheKeyById(doc.id), REDIS_TTL, JSON.stringify(doc));
+    await invalidateListCache();
+  } catch (cacheErr) {
+    console.error('[Documents] Error actualizando caché:', cacheErr.message);
+  }
+
+  if (rabbitChannel) {
+    try {
+      const message = JSON.stringify({ documentId: doc.id });
+      rabbitChannel.sendToQueue(SIGNATURE_QUEUE, Buffer.from(message), { persistent: true });
+      console.log(`[Documents] Mensaje publicado en ${SIGNATURE_QUEUE}: documentId=${doc.id}`);
+    } catch (mqErr) {
+      console.error('[Documents] Error publicando en RabbitMQ:', mqErr.message);
+    }
+  } else {
+    console.warn('[Documents] RabbitMQ no disponible; el documento no será firmado automáticamente.');
+  }
+
+  return res.status(201).json(doc);
+}
+
+async function handleJsonCreate(req, res) {
   const { titulo, contenidoBase64, autorId } = req.body;
 
   if (!titulo || typeof titulo !== 'string' || titulo.trim() === '') {
@@ -249,42 +336,62 @@ app.post('/api/documents', async (req, res) => {
     const result = await pool.query(
       `INSERT INTO documents (titulo, contenido_base64, autor_id)
        VALUES ($1, $2, $3)
-       RETURNING id, titulo, contenido_base64, autor_id, estado`,
+       RETURNING id, titulo, contenido_base64, autor_id, estado, archivo_nombre, archivo_tamano, archivo_tipo`,
       [titulo.trim(), contenidoBase64, autorId.trim()]
     );
 
     const doc = rowToDocumentResponse(result.rows[0]);
-    console.log(`[Documents] Documento creado: ${doc.id} ("${doc.titulo}")`);
+    console.log(`[Documents] Documento creado (JSON): ${doc.id} ("${doc.titulo}")`);
 
-    // Actualizar caché individual y borrar lista (patrón cache-aside)
-    try {
-      await redis.setex(cacheKeyById(doc.id), REDIS_TTL, JSON.stringify(doc));
-      await invalidateListCache();
-    } catch (cacheErr) {
-      // La caché es opcional; un fallo no debe bloquear la respuesta
-      console.error('[Documents] Error actualizando caché:', cacheErr.message);
-    }
-
-    // Publicar en RabbitMQ para que el Signature Worker lo procese
-    if (rabbitChannel) {
-      try {
-        const message = JSON.stringify({ documentId: doc.id });
-        // persistent: true → el mensaje sobrevive un reinicio de RabbitMQ
-        rabbitChannel.sendToQueue(SIGNATURE_QUEUE, Buffer.from(message), { persistent: true });
-        console.log(`[Documents] Mensaje publicado en ${SIGNATURE_QUEUE}: documentId=${doc.id}`);
-      } catch (mqErr) {
-        console.error('[Documents] Error publicando en RabbitMQ:', mqErr.message);
-      }
-    } else {
-      console.warn('[Documents] RabbitMQ no disponible; el documento no será firmado automáticamente.');
-    }
-
-    return res.status(201).json(doc);
+    return await afterDocumentCreated(doc, res);
   } catch (err) {
-    console.error('[Documents] Error en POST /api/documents:', err.message);
+    console.error('[Documents] Error en handleJsonCreate:', err.message);
     return res.status(500).json({ error: 'Error interno del servidor.' });
   }
-});
+}
+
+async function handleFileUpload(req, res) {
+  const { autorId } = req.body;
+  let { titulo } = req.body;
+  const file = req.file;
+
+  if (!file) {
+    return res.status(400).json({ error: 'El archivo es obligatorio (campo `file`).' });
+  }
+  if (!autorId || typeof autorId !== 'string' || autorId.trim() === '') {
+    return res.status(400).json({ error: 'El campo `autorId` es obligatorio.' });
+  }
+
+  if (!isValidFileType(file.buffer, file.mimetype, file.originalname)) {
+    return res.status(400).json({
+      error: 'Formato de archivo no permitido. Solo se aceptan archivos PDF (.pdf) y Word (.docx) válidos.'
+    });
+  }
+
+  if (!titulo || typeof titulo !== 'string' || titulo.trim() === '') {
+    titulo = file.originalname;
+  }
+
+  try {
+    const contenidoBase64 = file.buffer.toString('base64');
+    const tamano = file.size;
+
+    const result = await pool.query(
+      `INSERT INTO documents (titulo, contenido_base64, autor_id, archivo_nombre, archivo_tamano, archivo_tipo)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, titulo, contenido_base64, autor_id, estado, archivo_nombre, archivo_tamano, archivo_tipo`,
+      [titulo.trim(), contenidoBase64, autorId.trim(), file.originalname, tamano, file.mimetype]
+    );
+
+    const doc = rowToDocumentResponse(result.rows[0]);
+    console.log(`[Documents] Documento creado (Subida): ${doc.id} ("${doc.titulo}"), archivo=${file.originalname}`);
+
+    return await afterDocumentCreated(doc, res);
+  } catch (err) {
+    console.error('[Documents] Error en handleFileUpload:', err.message);
+    return res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+}
 
 // ─── GET /api/documents ───────────────────────────────────────────────────────
 
@@ -302,7 +409,7 @@ app.get('/api/documents', async (_req, res) => {
     // CACHE MISS: consultar PostgreSQL y repoblar caché
     console.log('[Documents] Cache MISS en GET /api/documents. Consultando PostgreSQL...');
     const result = await pool.query(
-      `SELECT id, titulo, contenido_base64, autor_id, estado
+      `SELECT id, titulo, contenido_base64, autor_id, estado, archivo_nombre, archivo_tamano, archivo_tipo
        FROM documents
        ORDER BY created_at DESC`
     );
@@ -341,7 +448,7 @@ app.get('/api/documents/:id', async (req, res) => {
     // CACHE MISS: consultar PostgreSQL
     console.log(`[Documents] Cache MISS en GET /api/documents/${id}. Consultando PostgreSQL...`);
     const result = await pool.query(
-      `SELECT id, titulo, contenido_base64, autor_id, estado
+      `SELECT id, titulo, contenido_base64, autor_id, estado, archivo_nombre, archivo_tamano, archivo_tipo
        FROM documents
        WHERE id = $1`,
       [id]
@@ -385,7 +492,7 @@ app.put('/api/documents/:id', async (req, res) => {
 
   try {
     const current = await pool.query(
-      `SELECT id, titulo, contenido_base64, autor_id, estado
+      `SELECT id, titulo, contenido_base64, autor_id, estado, archivo_nombre, archivo_tamano, archivo_tipo
        FROM documents
        WHERE id = $1`,
       [id]
@@ -402,7 +509,7 @@ app.put('/api/documents/:id', async (req, res) => {
            contenido_base64 = $2,
            updated_at = NOW()
        WHERE id = $3
-       RETURNING id, titulo, contenido_base64, autor_id, estado`,
+       RETURNING id, titulo, contenido_base64, autor_id, estado, archivo_nombre, archivo_tamano, archivo_tipo`,
       [
         titulo !== undefined ? titulo.trim() : previous.titulo,
         contenidoBase64 !== undefined ? contenidoBase64 : previous.contenido_base64,
@@ -556,7 +663,7 @@ app.patch('/api/documents/:id/status', async (req, res) => {
       `UPDATE documents
        SET estado = $1, updated_at = NOW()
        WHERE id = $2
-       RETURNING id, titulo, contenido_base64, autor_id, estado`,
+       RETURNING id, titulo, contenido_base64, autor_id, estado, archivo_nombre, archivo_tamano, archivo_tipo`,
       [estado, id]
     );
 

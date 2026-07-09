@@ -19,9 +19,10 @@ function App() {
     password: 'password123',
   });
   const [docForm, setDocForm] = useState({
-    titulo: 'Contrato de servicios',
-    contenido: 'Contenido del documento de prueba para firma digital.',
+    titulo: '',
+    contenido: '',
   });
+  const [selectedFile, setSelectedFile] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [selectedStatus, setSelectedStatus] = useState(null);
   const [message, setMessage] = useState('');
@@ -105,16 +106,36 @@ function App() {
     event.preventDefault();
     setMessage('');
 
+    if (!selectedFile) {
+      setMessage('Por favor, selecciona un archivo (.pdf o .docx) para subir.');
+      return;
+    }
+
     try {
-      await request('/api/documents', {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('autorId', user?.userId || 'demo-user');
+      if (docForm.titulo) {
+        formData.append('titulo', docForm.titulo);
+      }
+
+      const response = await fetch(`${API_URL}/api/documents`, {
         method: 'POST',
-        body: JSON.stringify({
-          titulo: docForm.titulo,
-          contenidoBase64: encodeBase64(docForm.contenido),
-          autorId: user?.userId || 'demo-user',
-        }),
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
+        body: formData
       });
-      setMessage('Documento creado y evento de firma publicado.');
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Error al subir el archivo');
+      }
+
+      setMessage('Documento subido y evento de firma publicado con éxito.');
+      setDocForm({ ...docForm, titulo: '' });
+      setSelectedFile(null);
+      document.getElementById('file-input').value = '';
       await loadDocuments();
     } catch (error) {
       setMessage(error.message);
@@ -197,17 +218,17 @@ function App() {
       {token && (
         <>
           <section className="panel">
-            <h2>Crear documento</h2>
+            <h2>Subir documento para firma</h2>
             <form onSubmit={createDocument} className="grid-form">
               <label>
-                Título
-                <input value={docForm.titulo} onChange={(event) => setDocForm({ ...docForm, titulo: event.target.value })} />
+                Título (Opcional)
+                <input value={docForm.titulo} onChange={(event) => setDocForm({ ...docForm, titulo: event.target.value })} placeholder="Dejar vacío para usar nombre del archivo" />
               </label>
               <label>
-                Contenido
-                <textarea value={docForm.contenido} onChange={(event) => setDocForm({ ...docForm, contenido: event.target.value })} />
+                Archivo (.pdf, .docx - máx. 40MB)
+                <input id="file-input" type="file" accept=".pdf,.docx" onChange={(event) => setSelectedFile(event.target.files[0] || null)} />
               </label>
-              <button type="submit">Crear documento</button>
+              <button type="submit">Subir y procesar firma</button>
             </form>
           </section>
 

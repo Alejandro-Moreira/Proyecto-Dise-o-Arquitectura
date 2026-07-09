@@ -299,6 +299,77 @@ describe('PATCH /api/documents/:id/status (interno)', () => {
   });
 });
 
+describe('POST /api/documents (multipart/form-data upload)', () => {
+  test('sube archivo PDF válido correctamente', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{
+      ...SAMPLE_DOC_ROW,
+      archivo_nombre: 'contrato.pdf',
+      archivo_tamano: 100,
+      archivo_tipo: 'application/pdf'
+    }] });
+
+    const pdfBuffer = Buffer.from('%PDF-1.4 ...');
+
+    const res = await request(app)
+      .post('/api/documents')
+      .set('Content-Type', 'multipart/form-data')
+      .field('autorId', 'user-uuid-456')
+      .field('titulo', 'Contrato PDF')
+      .attach('file', pdfBuffer, { filename: 'contrato.pdf', contentType: 'application/pdf' });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty('id');
+    expect(res.body.archivoNombre).toBe('contrato.pdf');
+    expect(res.body.archivoTipo).toBe('application/pdf');
+  });
+
+  test('sube archivo DOCX (ZIP) válido correctamente', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{
+      ...SAMPLE_DOC_ROW,
+      archivo_nombre: 'contrato.docx',
+      archivo_tamano: 100,
+      archivo_tipo: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    }] });
+
+    const docxBuffer = Buffer.from([0x50, 0x4B, 0x03, 0x04, 0x00, 0x00, 0x00]);
+
+    const res = await request(app)
+      .post('/api/documents')
+      .set('Content-Type', 'multipart/form-data')
+      .field('autorId', 'user-uuid-456')
+      .attach('file', docxBuffer, { filename: 'contrato.docx', contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.archivoNombre).toBe('contrato.docx');
+  });
+
+  test('rechaza archivo con formato no permitido (ej. PNG)', async () => {
+    const pngBuffer = Buffer.from([0x89, 0x50, 0x4E, 0x47]);
+
+    const res = await request(app)
+      .post('/api/documents')
+      .set('Content-Type', 'multipart/form-data')
+      .field('autorId', 'user-uuid-456')
+      .attach('file', pngBuffer, { filename: 'image.png', contentType: 'image/png' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/no permitido/i);
+  });
+
+  test('rechaza archivo con extensión falsificada (ej. PNG renombrado a PDF)', async () => {
+    const pngBuffer = Buffer.from([0x89, 0x50, 0x4E, 0x47]);
+
+    const res = await request(app)
+      .post('/api/documents')
+      .set('Content-Type', 'multipart/form-data')
+      .field('autorId', 'user-uuid-456')
+      .attach('file', pngBuffer, { filename: 'malicioso.pdf', contentType: 'application/pdf' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/no permitido/i);
+  });
+});
+
 // ─── Tests: GET /health y /metrics ───────────────────────────────────────────
 
 describe('Endpoints de observabilidad', () => {
