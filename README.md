@@ -1,4 +1,4 @@
-﻿# EcoFirma
+# EcoFirma
 
 Plataforma distribuida para gestión documental y firma digital asíncrona.
 
@@ -8,120 +8,90 @@ Plataforma distribuida para gestión documental y firma digital asíncrona.
 
 El ecosistema incluye:
 
-- Frontend React/Vite.
-- API Gateway Node.js.
-- Users Service.
-- Documents Service.
-- Signature Worker tipo Lambda/server function.
-- PostgreSQL, Redis y RabbitMQ en Docker.
-- Prometheus y Grafana para monitoreo.
+- **Frontend**: React/Vite.
+- **API Gateway**: Node.js (enrutador con validación de JWT centralizada).
+- **Users Service**: Gestión de usuarios (ahora migrado a PostgreSQL para compatibilidad con planes gratuitos).
+- **Documents Service**: Gestión de documentos con caché Redis.
+- **PostgreSQL**: Base de datos relacional compartida (pero con tablas aisladas por servicio).
+- **Redis**: Caché para documentos.
+- **RabbitMQ**: (Opcional, usado localmente por el `Signature Worker` para firmas asíncronas).
+- **Prometheus y Grafana**: Monitoreo de métricas nativas del stack.
 
-## Ejecución local
+---
+
+## Ejecución Local
+
+Para levantar todo el stack localmente con Docker Compose (incluyendo RabbitMQ, MySQL para histórico si es necesario, Postgres, Redis y monitoreo):
+
+1. **Clonar y configurar variables**:
+   ```bash
+   cp .env.example .env
+   ```
+2. **Levantar contenedores**:
+   ```bash
+   docker compose up --build
+   ```
+
+### URLs Locales Principales:
+
+- **Frontend (UI)**: http://localhost:5188 o http://localhost:5173
+- **API Gateway**: http://localhost:8081
+- **RabbitMQ UI**: http://localhost:15673
+- **Prometheus**: http://localhost:9090
+- **Grafana**: http://localhost:3001 (Credenciales: `admin` / `ecofirma_grafana_admin`)
+
+---
+
+## Despliegue en Producción (Funcionando) 🟢
+
+El stack completo se encuentra desplegado y funcionando de forma pública:
+
+- **Aplicación Frontend (GitHub Pages)**: [https://alejandro-moreira.github.io/Proyecto-Dise-o-Arquitectura/](https://alejandro-moreira.github.io/Proyecto-Dise-o-Arquitectura/)
+- **API Gateway (Render)**: `https://ecofirma-gateway.onrender.com`
+- **Users Service (Render)**: `https://ecofirma-users-service.onrender.com`
+- **Documents Service (Render)**: `https://ecofirma-documents-service.onrender.com`
+
+> [!NOTE]
+> **Limitación del Plan Gratuito (Render)**: 
+> Los servicios backend están alojados en el plan gratuito de Render. Si no reciben peticiones durante 15 minutos, **se suspenden temporalmente (se duermen)**. La primera petición tras este estado puede tardar entre 30 y 50 segundos en responder mientras el contenedor se inicia de nuevo (cold start). Las siguientes peticiones serán instantáneas.
+
+---
+
+## Guía de Uso del Despliegue Activo
+
+Para probar el flujo completo en la URL pública:
+
+1. **Ingresa a la aplicación**: Abre [EcoFirma en GitHub Pages](https://alejandro-moreira.github.io/Proyecto-Dise-o-Arquitectura/).
+2. **Registro**:
+   - Haz clic en la pestaña **Registro**.
+   - Rellena tu Nombre, Email y Contraseña (mínimo 6 caracteres).
+   - Haz clic en **Registrar**.
+3. **Inicio de Sesión**:
+   - Ve a la pestaña **Login**.
+   - Introduce tus credenciales registradas y haz clic en **Entrar**.
+4. **Crear Documento**:
+   - Una vez logueado, rellena el formulario de **Crear documento** con un título y contenido.
+   - Presiona **Crear documento** (el documento se guardará en PostgreSQL en estado `PENDIENTE`).
+5. **Listado**:
+   - Verás el documento listado en la sección inferior con su respectivo ID único.
+
+---
+
+## Pruebas de Integración y Unitarias
+
+Puedes ejecutar las pruebas unitarias de los servicios localmente:
 
 ```bash
-cp .env.example .env
-docker compose up --build
+# Probar Users Service
+cd users-service
+npm test
+
+# Probar Documents Service
+cd ../documents-service
+npm test
 ```
-
-URLs principales:
-
-- Frontend: http://localhost:5188
-- API Gateway: http://localhost:8081
-- RabbitMQ UI: http://localhost:15673
-- Prometheus: http://localhost:9090
-- Grafana: http://localhost:3001
-
-## Despliegue público en GitHub Pages
-
-El frontend se despliega automáticamente en GitHub Pages mediante el workflow:
-
-```text
-.github/workflows/pages.yml
-```
-
-URL pública esperada:
-
-```text
-https://alejandro-moreira.github.io/Proyecto-Dise-o-Arquitectura/
-```
-
-GitHub Pages hospeda únicamente la aplicación estática de React/Vite. Para que la aplicación funcione completamente fuera de `localhost`, el API Gateway y los servicios de backend deben desplegarse en un proveedor de nube como Render, Railway, Fly.io, AWS o Azure.
-
-Cuando exista una URL pública para el API Gateway, debe configurarse como variable del repositorio en GitHub:
-
-```text
-VITE_API_URL=https://url-publica-del-api-gateway
-```
-
-Ruta en GitHub:
-
-```text
-Settings -> Secrets and variables -> Actions -> Variables -> New repository variable
-```
-
-## Despliegue completo en Render
-
-El repositorio incluye un Blueprint de Render en:
-
-```text
-render.yaml
-```
-
-Este archivo define la infraestructura cloud de EcoFirma:
-
-- `ecofirma-frontend`: Static Site público para React/Vite.
-- `ecofirma-gateway`: Web Service público para el API Gateway.
-- `ecofirma-users-service`: Private Service para autenticación.
-- `ecofirma-documents-service`: Private Service para documentos.
-- `ecofirma-signature-worker`: Background Worker para firma asíncrona.
-- `ecofirma-rabbitmq`: Private Service Docker para mensajería AMQP.
-- `ecofirma-redis`: Render Key Value para caché.
-- `ecofirma-postgres`: Render PostgreSQL administrado.
-
-URLs públicas esperadas:
-
-```text
-Frontend: https://ecofirma-frontend.onrender.com
-API Gateway: https://ecofirma-gateway.onrender.com
-```
-
-Pasos para desplegar:
-
-1. Subir el repositorio a GitHub.
-2. Entrar a Render.
-3. Seleccionar `New +` -> `Blueprint`.
-4. Conectar el repositorio `Proyecto-Dise-o-Arquitectura`.
-5. Confirmar el archivo `render.yaml`.
-6. Crear el Blueprint.
-
-Render creará los secretos automáticamente con `generateValue`, incluyendo `JWT_SECRET`, `INTERNAL_TOKEN` y la contraseña de RabbitMQ.
-
-## Flujo de demo
-
-1. Registrar usuario.
-2. Iniciar sesión.
-3. Crear documento.
-4. Listar documentos.
-5. Solicitar firma.
-6. Signature Worker consume el mensaje desde RabbitMQ.
-7. Documents Service actualiza el documento a `FIRMADO`.
-8. Consultar estado del documento.
 
 ## Documentación
 
 - OpenAPI: `docs/openapi.yaml`
 - Arquitectura y despliegue: `docs/arquitectura-y-despliegue.md`
-
-## Pruebas
-
-```bash
-cd users-service
-npm test
-
-cd ../documents-service
-npm test
-```
-
-## CI/CD y monitoreo
-
-El proyecto incluye workflows de GitHub Actions para CI, CD y escaneo de seguridad. El stack de monitoreo usa Prometheus y Grafana con configuración en `monitoring/`.
