@@ -195,13 +195,17 @@ const upload = multer({
  * para asegurar que sea realmente un PDF o un DOCX (archivo ZIP).
  */
 function isValidFileType(buffer, mimeType, filename) {
-  if (!filename || typeof filename !== 'string') return false;
+  if (!filename || typeof filename !== 'string') {
+    return false;
+  }
   const ext = filename.split('.').pop().toLowerCase();
   if (ext !== 'pdf' && ext !== 'docx') {
     return false;
   }
 
-  if (!buffer || buffer.length < 4) return false;
+  if (!buffer || buffer.length < 4) {
+    return false;
+  }
   const hex = buffer.toString('hex', 0, 4).toUpperCase();
 
   const isPDF = hex === '25504446'; // %PDF

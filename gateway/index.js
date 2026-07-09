@@ -185,6 +185,7 @@ app.get('/api/docs/swagger.json', (req, res) => {
       jsonContent.servers = [{ url: `${protocol}://${host}` }];
       res.json(jsonContent);
     } catch (err) {
+      console.error('[Gateway] Error parsing openapi.json:', err.message);
       res.status(500).json({ error: 'Error parsing OpenAPI spec' });
     }
   } else {
