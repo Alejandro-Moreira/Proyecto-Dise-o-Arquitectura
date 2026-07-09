@@ -27,7 +27,6 @@ function App() {
   const [editingFile, setEditingFile] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [selectedStatus, setSelectedStatus] = useState(null);
-  const [message, setMessage] = useState('');
 
   const headers = useMemo(() => ({
     'Content-Type': 'application/json',
@@ -56,7 +55,6 @@ function App() {
 
   async function submitAuth(event) {
     event.preventDefault();
-    setMessage('');
 
     try {
       const path = authMode === 'register' ? '/api/users/register' : '/api/users/login';
@@ -69,7 +67,7 @@ function App() {
       });
 
       if (authMode === 'register') {
-        setMessage('Usuario registrado. Ahora inicia sesión.');
+        alert('Usuario registrado. Ahora inicia sesión.');
         setAuthMode('login');
         return;
       }
@@ -77,10 +75,10 @@ function App() {
       setToken(data.token);
       setUser(data.user || null);
       localStorage.setItem('ecofirma_token', data.token);
-      setMessage('Sesión iniciada correctamente.');
+      alert('Sesión iniciada correctamente.');
       await loadDocuments(data.token);
     } catch (error) {
-      setMessage(error.message);
+      alert(error.message);
     }
   }
 
@@ -106,10 +104,9 @@ function App() {
 
   async function createDocument(event) {
     event.preventDefault();
-    setMessage('');
 
     if (!selectedFile) {
-      setMessage('Por favor, selecciona un archivo (.pdf o .docx) para subir.');
+      alert('Por favor, selecciona un archivo (.pdf o .docx) para subir.');
       return;
     }
 
@@ -134,37 +131,36 @@ function App() {
         throw new Error(data.error || 'Error al subir el archivo');
       }
 
-      setMessage('Documento subido y evento de firma publicado con éxito.');
+      alert('Documento subido y evento de firma publicado con éxito.');
       setDocForm({ ...docForm, titulo: '' });
       setSelectedFile(null);
       document.getElementById('file-input').value = '';
       await loadDocuments();
     } catch (error) {
-      setMessage(error.message);
+      alert(error.message);
     }
   }
 
   async function requestSignature(documentId) {
-    setMessage('');
     try {
       await request('/api/signatures/process', {
         method: 'POST',
         body: JSON.stringify({ documentId }),
       });
-      setMessage('Firma solicitada. El worker la procesará desde RabbitMQ.');
+      alert('Firma solicitada. El worker la procesará desde RabbitMQ.');
       await loadDocuments();
     } catch (error) {
-      setMessage(error.message);
+      alert(error.message);
     }
   }
 
   async function getStatus(documentId) {
-    setMessage('');
     try {
       const data = await request(`/api/documents/${documentId}/status`);
       setSelectedStatus(data);
+      alert(`Estado del documento: ${data.status || data.estado}`);
     } catch (error) {
-      setMessage(error.message);
+      alert(error.message);
     }
   }
 
@@ -172,22 +168,20 @@ function App() {
     if (!window.confirm('¿Estás seguro de que deseas eliminar este documento? Esta acción no se puede deshacer.')) {
       return;
     }
-    setMessage('');
     try {
       await request(`/api/documents/${documentId}`, {
         method: 'DELETE',
       });
-      setMessage('Documento eliminado con éxito.');
+      alert('Documento eliminado con éxito.');
       await loadDocuments();
     } catch (error) {
-      setMessage(`Error al eliminar: ${error.message}`);
+      alert(`Error al eliminar: ${error.message}`);
     }
   }
 
   async function updateDocument(event) {
     event.preventDefault();
     if (!editingDoc) return;
-    setMessage('');
 
     try {
       let contenidoBase64 = undefined;
@@ -207,12 +201,12 @@ function App() {
         body: JSON.stringify(body),
       });
 
-      setMessage('Documento actualizado con éxito.');
+      alert('Documento actualizado con éxito.');
       setEditingDoc(null);
       setEditingFile(null);
       await loadDocuments();
     } catch (error) {
-      setMessage(`Error al actualizar: ${error.message}`);
+      alert(`Error al actualizar: ${error.message}`);
     }
   }
 
@@ -233,11 +227,12 @@ function App() {
     setUser(null);
     setDocuments([]);
     localStorage.removeItem('ecofirma_token');
+    alert('Sesión cerrada.');
   }
 
   useEffect(() => {
     if (token) {
-      loadDocuments().catch((error) => setMessage(error.message));
+      loadDocuments().catch((error) => alert(error.message));
     }
   }, []);
 
@@ -324,8 +319,6 @@ function App() {
           Estado del documento {selectedStatus.documentId}: <strong>{selectedStatus.status || selectedStatus.estado}</strong>
         </section>
       )}
-
-      {message && <section className="panel compact">{message}</section>}
 
       {editingDoc && (
         <div className="modal-overlay">
