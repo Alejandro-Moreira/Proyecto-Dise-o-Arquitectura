@@ -164,8 +164,8 @@ services:
       - "${GATEWAY_PORT:-8080}:8080"
     environment:
       GATEWAY_PORT: 8080
-      USERS_SERVICE_URL: ${USERS_SERVICE_URL}
-      DOCUMENTS_SERVICE_URL: ${DOCUMENTS_SERVICE_URL}
+      USERS_SERVICE_URL: http://users-service:3001
+      DOCUMENTS_SERVICE_URL: http://documents-service:3002
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
       JWT_SECRET: ${JWT_SECRET}
     depends_on:
@@ -219,18 +219,18 @@ services:
     restart: unless-stopped
     environment:
       DOCUMENTS_SERVICE_PORT: ${DOCUMENTS_SERVICE_PORT:-3002}
-      POSTGRES_HOST: ${POSTGRES_HOST}
-      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       REDIS_TTL: ${REDIS_TTL}
       RABBITMQ_USER: ${RABBITMQ_USER}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
-      RABBITMQ_HOST: ${RABBITMQ_HOST}
-      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
       INTERNAL_TOKEN: ${INTERNAL_TOKEN}
     depends_on:
       postgres:
@@ -258,9 +258,9 @@ services:
     environment:
       RABBITMQ_USER: ${RABBITMQ_USER}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
-      RABBITMQ_HOST: ${RABBITMQ_HOST}
-      RABBITMQ_PORT: ${RABBITMQ_PORT}
-      DOCUMENTS_SERVICE_URL: ${DOCUMENTS_SERVICE_URL}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      DOCUMENTS_SERVICE_URL: http://documents-service:3002
       INTERNAL_TOKEN: ${INTERNAL_TOKEN}
     depends_on:
       rabbitmq:
