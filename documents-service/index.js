@@ -704,6 +704,23 @@ app.patch('/api/documents/:id/status', async (req, res) => {
   }
 });
 
+// Endpoint temporal para forzar estados en producción para capturas
+app.get('/api/documents/:id/force-status/:estado', async (req, res) => {
+  const { id, estado } = req.params;
+  try {
+    await pool.query('UPDATE documents SET estado = $1 WHERE id = $2', [estado, id]);
+    try {
+      await redis.del(`documents:${id}`);
+      await redis.del('documents:all');
+    } catch (cacheErr) {
+      console.error('[Documents] Error invalidando caché en endpoint temporal:', cacheErr.message);
+    }
+    res.send(`Estado de ${id} actualizado a ${estado}`);
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
+
 // ─── Arranque ─────────────────────────────────────────────────────────────────
 
 async function start() {
