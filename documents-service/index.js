@@ -82,7 +82,7 @@ let rabbitChannel = null;
 
 // Si RABBITMQ_HOST no está explícitamente configurado, el servicio arranca
 // sin RabbitMQ y las firmas quedan en modo "sin cola" (sin worker automático).
-const RABBITMQ_ENABLED = process.env.RABBITMQ_HOST && process.env.RABBITMQ_HOST !== 'rabbitmq';
+const RABBITMQ_ENABLED = !!process.env.RABBITMQ_HOST;
 
 async function connectRabbitMQ(retries = 3, delay = 3000) {
   if (!RABBITMQ_ENABLED) {
